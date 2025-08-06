@@ -40,7 +40,7 @@ mkdir -p $LOG_DIR
   
   # Use Nginx to expose web app in Paperspace
   echo "Running update apt-get before installing nginx"
-  apt-get update
+  apt-get update -o Acquire::Languages=none -o Acquire::Translation=none
   echo "Now installing nginx"
   apt-get install -qq -y nginx > /dev/null
   echo "Installed nginx"
