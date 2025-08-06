@@ -33,6 +33,18 @@ mkdir -p $ROOT_REPO_DIR
 mkdir -p $VENV_DIR
 mkdir -p $LOG_DIR
 
+if env | grep -q "PAPERSPACE"; then
+  # Add alias to check the status of the web app
+  chmod +x $WORKING_DIR/status_check.py
+  echo "alias status='watch -n 1 /$WORKING_DIR/status_check.py'" >> ~/.bashrc
+  
+  # Use Nginx to expose web app in Paperspace
+  apt-get install -qq -y nginx > /dev/null
+  cp /$WORKING_DIR/nginx/default /etc/nginx/sites-available/default
+  cp /$WORKING_DIR/nginx/nginx.conf /etc/nginx/nginx.conf
+  /usr/sbin/nginx
+fi
+
 echo "Installing common dependencies"
 apt-get update -qq
 apt-get install -qq -y curl jq git-lfs ninja-build \
@@ -54,17 +66,6 @@ apt-get install -y nodejs > /dev/null
 echo "Installing PM2 for process management"
 npm install -g pm2 > /dev/null 2>&1
 
-if env | grep -q "PAPERSPACE"; then
-  # Add alias to check the status of the web app
-  chmod +x $WORKING_DIR/status_check.py
-  echo "alias status='watch -n 1 /$WORKING_DIR/status_check.py'" >> ~/.bashrc
-  
-  # Use Nginx to expose web app in Paperspace
-  apt-get install -qq -y nginx > /dev/null
-  cp /$WORKING_DIR/nginx/default /etc/nginx/sites-available/default
-  cp /$WORKING_DIR/nginx/nginx.conf /etc/nginx/nginx.conf
-  /usr/sbin/nginx
-fi
 
 
 # Read the RUN_SCRIPT environment variable
