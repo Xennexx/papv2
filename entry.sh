@@ -43,8 +43,7 @@ mkdir -p $LOG_DIR
   apt-get update
   echo "Now installing nginx"
   apt-get install -qq -y nginx > /dev/null
-  echo "Installed nginx now sleeping 10s"
-  sleep 10
+  echo "Installed nginx"
   
   cp /$WORKING_DIR/nginx/default /etc/nginx/sites-available/default
   cp /$WORKING_DIR/nginx/nginx.conf /etc/nginx/nginx.conf
