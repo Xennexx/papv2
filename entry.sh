@@ -33,7 +33,7 @@ mkdir -p $ROOT_REPO_DIR
 mkdir -p $VENV_DIR
 mkdir -p $LOG_DIR
 
-if env | grep -q "PAPERSPACE"; then
+
   # Add alias to check the status of the web app
   chmod +x $WORKING_DIR/status_check.py
   echo "alias status='watch -n 1 /$WORKING_DIR/status_check.py'" >> ~/.bashrc
@@ -43,7 +43,7 @@ if env | grep -q "PAPERSPACE"; then
   cp /$WORKING_DIR/nginx/default /etc/nginx/sites-available/default
   cp /$WORKING_DIR/nginx/nginx.conf /etc/nginx/nginx.conf
   /usr/sbin/nginx
-fi
+
 
 echo "Installing common dependencies"
 apt-get update -qq
