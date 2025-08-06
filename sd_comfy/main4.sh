@@ -31,14 +31,8 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
     python3.10 -m venv $VENV_DIR/sd_comfy-env
     
     source $VENV_DIR/sd_comfy-env/bin/activate
-
-    pip install --upgrade pip
-    pip install --upgrade wheel setuptools
     
     cd $REPO_DIR
-    pip install xformers
-    pip install torchvision torchaudio --no-deps
-    pip install -r requirements.txt
     
     touch /tmp/sd_comfy.prepared
 else
