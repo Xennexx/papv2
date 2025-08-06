@@ -40,6 +40,7 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
     pip install xformers
     pip install torchvision torchaudio --no-deps
     pip install -r requirements.txt
+
     
     touch /tmp/sd_comfy.prepared
 else
@@ -63,6 +64,13 @@ if [[ -z "$INSTALL_ONLY" ]]; then
   PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --port 7005" > $LOG_DIR/sd_comfy.log 2>&1 &
   echo $! > /tmp/sd_comfy.pid
 fi
+
+if env | grep -q "PAPERSPACE"; then
+  echo "Link: https://$PAPERSPACE_FQDN/sd-comfy/"
+fi
+
+
+echo "### Done ###"
 
 if env | grep -q "PAPERSPACE"; then
   echo "Link: https://$PAPERSPACE_FQDN/sd-comfy/"
