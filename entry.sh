@@ -39,7 +39,11 @@ mkdir -p $LOG_DIR
   echo "alias status='watch -n 1 /$WORKING_DIR/status_check.py'" >> ~/.bashrc
   
   # Use Nginx to expose web app in Paperspace
+  echo "Installing nginx"
   apt-get install -qq -y nginx > /dev/null
+  echo "Installed nginx now sleeping 10s"
+  sleep 10
+  
   cp /$WORKING_DIR/nginx/default /etc/nginx/sites-available/default
   cp /$WORKING_DIR/nginx/nginx.conf /etc/nginx/nginx.conf
   /usr/sbin/nginx
