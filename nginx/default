@@ -1,0 +1,309 @@
+map $http_referer $first_subpath {
+    ~*^https?://[^/]+/([^/]+) $1;
+    default "";
+}
+
+server {
+    listen 8888;
+
+    # Common proxy settings
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    # jupyter lab
+    location / {
+    
+        if ($first_subpath ~* command) {
+            rewrite ^/command/(.*)$ /$1 break;
+            proxy_pass http://localhost:7000;
+        }
+    
+        if ($first_subpath ~* fastchat) {
+            rewrite ^/fastchat/(.*)$ /$1 break;
+            proxy_pass http://localhost:7001;
+        }
+    
+        if ($first_subpath ~* flowise) {
+            rewrite ^/flowise/(.*)$ /$1 break;
+            proxy_pass http://localhost:7010;
+        }
+    
+        if ($first_subpath ~* image-browser) {
+            rewrite ^/image-browser/(.*)$ /$1 break;
+            proxy_pass http://localhost:7002;
+        }
+    
+        if ($first_subpath ~* kohya-ss) {
+            rewrite ^/kohya-ss/(.*)$ /$1 break;
+            proxy_pass http://localhost:7012;
+        }
+    
+        if ($first_subpath ~* kosmos2) {
+            rewrite ^/kosmos2/(.*)$ /$1 break;
+            proxy_pass http://localhost:7014;
+        }
+    
+        if ($first_subpath ~* langflow) {
+            rewrite ^/langflow/(.*)$ /$1 break;
+            proxy_pass http://localhost:7011;
+        }
+    
+        if ($first_subpath ~* musicgen) {
+            rewrite ^/musicgen/(.*)$ /$1 break;
+            proxy_pass http://localhost:7003;
+        }
+    
+        if ($first_subpath ~* rclone) {
+            rewrite ^/rclone/(.*)$ /$1 break;
+            proxy_pass http://localhost:7004;
+        }
+    
+        if ($first_subpath ~* sd-comfy) {
+            rewrite ^/sd-comfy/(.*)$ /$1 break;
+            proxy_pass http://localhost:7005;
+        }
+
+        if ($first_subpath ~* com2) {
+            rewrite ^/com2/(.*)$ /$1 break;
+            proxy_pass http://localhost:7100;
+        }
+
+        if ($first_subpath ~* com3) {
+            rewrite ^/com3/(.*)$ /$1 break;
+            proxy_pass http://localhost:7101;
+        }
+
+        if ($first_subpath ~* com4) {
+            rewrite ^/com4/(.*)$ /$1 break;
+            proxy_pass http://localhost:7102;
+        }
+
+        if ($first_subpath ~* com5) {
+            rewrite ^/com5/(.*)$ /$1 break;
+            proxy_pass http://localhost:7103;
+        }
+    
+        if ($first_subpath ~* sd-fooocus) {
+            rewrite ^/sd-fooocus/(.*)$ /$1 break;
+            proxy_pass http://localhost:7015;
+        }
+    
+        if ($first_subpath ~* sd-invoke) {
+            rewrite ^/sd-invoke/(.*)$ /$1 break;
+            proxy_pass http://localhost:7006;
+        }
+    
+        if ($first_subpath ~* sd-swarm) {
+            rewrite ^/sd-swarm/(.*)$ /$1 break;
+            proxy_pass http://localhost:7016;
+        }
+    
+        if ($first_subpath ~* sd-volta) {
+            rewrite ^/sd-volta/(.*)$ /$1 break;
+            proxy_pass http://localhost:7007;
+        }
+    
+        if ($first_subpath ~* sd-webui) {
+            rewrite ^/sd-webui/(.*)$ /$1 break;
+            proxy_pass http://localhost:7008;
+        }
+    
+        if ($first_subpath ~* textgen) {
+            rewrite ^/textgen/(.*)$ /$1 break;
+            proxy_pass http://localhost:7009;
+        }
+    
+
+        proxy_pass http://localhost:8890;
+    }
+
+    location ~* /(api/kernels/[^/]+/(channels|iopub|shell|stdin)|terminals/websocket)/? {
+        proxy_pass http://localhost:8890;
+        proxy_read_timeout    86400;
+    }
+
+
+    # command
+    location ~* ^/command/(.*)$ {
+        
+        rewrite ^/command/(.*) /$1 break;
+        proxy_pass http://localhost:7000;
+        
+    }
+    
+
+    # fastchat
+    location ~* ^/fastchat/(.*)$ {
+        
+        rewrite ^/fastchat/(.*) /$1 break;
+        proxy_pass http://localhost:7001;
+        
+    }
+    
+
+    # flowise
+    location ~* ^/flowise/(.*)$ {
+        
+        rewrite ^/flowise/(.*) /$1 break;
+        proxy_pass http://localhost:7010;
+        
+    }
+    
+
+    # image_browser
+    location ~* ^/image-browser/(.*)$ {
+        
+        absolute_redirect off;
+        return 301 /infinite_image_browsing;
+        
+    }
+    
+
+    # kohya_ss
+    location ~* ^/kohya-ss/(.*)$ {
+        
+        rewrite ^/kohya-ss/(.*) /$1 break;
+        proxy_pass http://localhost:7012;
+        
+    }
+    
+
+    # kosmos2
+    location ~* ^/kosmos2/(.*)$ {
+        
+        rewrite ^/kosmos2/(.*) /$1 break;
+        proxy_pass http://localhost:7014;
+        
+    }
+    
+
+    # langflow
+    location ~* ^/langflow/(.*)$ {
+        
+        rewrite ^/langflow/(.*) /$1 break;
+        proxy_pass http://localhost:7011;
+        
+    }
+    
+
+    # musicgen
+    location ~* ^/musicgen/(.*)$ {
+        
+        rewrite ^/musicgen/(.*) /$1 break;
+        proxy_pass http://localhost:7003;
+        
+    }
+    
+
+    # rclone
+    location ~* ^/rclone/(.*)$ {
+        
+        rewrite ^/rclone/(.*) /$1 break;
+        proxy_pass http://localhost:7004;
+        
+    }
+    
+
+    # sd_comfy
+    location ~* ^/sd-comfy/(.*)$ {
+        
+        rewrite ^/sd-comfy/(.*) /$1 break;
+        proxy_pass http://localhost:7005;
+        
+    }
+
+    location ~* ^/com2/(.*)$ {
+        
+        rewrite ^/com2/(.*) /$1 break;
+        proxy_pass http://localhost:7100;
+        
+    }
+
+    location ~* ^/com3/(.*)$ {
+        
+        rewrite ^/com3/(.*) /$1 break;
+        proxy_pass http://localhost:7101;
+        
+    }
+
+    location ~* ^/com4/(.*)$ {
+        
+        rewrite ^/com4/(.*) /$1 break;
+        proxy_pass http://localhost:7102;
+        
+    }
+
+    location ~* ^/com5/(.*)$ {
+        
+        rewrite ^/com5/(.*) /$1 break;
+        proxy_pass http://localhost:7103;
+        
+    }
+    
+
+    # sd_fooocus
+    location ~* ^/sd-fooocus/(.*)$ {
+        
+        rewrite ^/sd-fooocus/(.*) /$1 break;
+        proxy_pass http://localhost:7015;
+        
+    }
+    
+
+    # sd_invoke
+    location ~* ^/sd-invoke/(.*)$ {
+        
+        rewrite ^/sd-invoke/(.*) /$1 break;
+        proxy_pass http://localhost:7006;
+        
+    }
+    
+
+    # sd_swarm
+    location ~* ^/sd-swarm/(.*)$ {
+        
+        rewrite ^/sd-swarm/(.*) /$1 break;
+        proxy_pass http://localhost:7016;
+        
+    }
+    
+
+    # sd_volta
+    location ~* ^/sd-volta/(.*)$ {
+        
+        rewrite ^/sd-volta/(.*) /$1 break;
+        proxy_pass http://localhost:7007;
+        
+    }
+    
+
+    # sd_webui
+    location ~* ^/sd-webui/(.*)$ {
+        
+        rewrite ^/sd-webui/(.*) /$1 break;
+        proxy_pass http://localhost:7008;
+        
+    }
+    
+
+    # textgen
+    location ~* ^/textgen/(.*)$ {
+        
+        rewrite ^/textgen/(.*) /$1 break;
+        proxy_pass http://localhost:7009;
+        
+    }
+    
+
+
+    # sd image browser
+    location /infinite_image_browsing {
+        proxy_pass http://localhost:7002/infinite_image_browsing;
+    }
+
+}
