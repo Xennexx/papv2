@@ -40,6 +40,7 @@ mkdir -p $LOG_DIR
   
   # Use Nginx to expose web app in Paperspace
   echo "Installing nginx"
+  apt-get update -qq
   apt-get install -qq -y nginx > /dev/null
   echo "Installed nginx now sleeping 10s"
   sleep 10
@@ -50,7 +51,6 @@ mkdir -p $LOG_DIR
 
 
 echo "Installing common dependencies"
-apt-get update -qq
 apt-get install -qq -y curl jq git-lfs ninja-build \
     aria2 zip python3-venv python3-dev python3.10 \
     python3.10-venv python3.10-dev python3.10-tk  > /dev/null
