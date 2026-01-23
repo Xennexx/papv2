@@ -38,8 +38,14 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
     
     cd $REPO_DIR
     pip install xformers
-    pip install torchvision torchaudio --no-deps
+    # Get the installed torch version and install matching torchaudio
+    TORCH_VERSION=$(pip show torch | grep "^Version:" | cut -d' ' -f2 | cut -d'+' -f1)
+    pip install torchvision torchaudio==${TORCH_VERSION} --no-deps
     pip install -r requirements.txt
+    # Install additional dependencies that custom nodes require
+    pip install opencv-python scikit-image piexif segment-anything
+    # Install ComfyUI Manager and other custom node dependencies
+    pip install GitPython toml rich uv matplotlib ultralytics lpips simpleeval
 
     
     touch /tmp/sd_comfy.prepared
