@@ -38,12 +38,27 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
     
     cd $REPO_DIR
     pip install xformers
-    # Get the installed torch version and install matching torchaudio from PyTorch CUDA index
-    TORCH_VERSION=$(pip show torch | grep "^Version:" | cut -d' ' -f2 | cut -d'+' -f1)
-    pip install torchvision torchaudio==${TORCH_VERSION} --index-url https://download.pytorch.org/whl/cu128 --no-deps
+
+    # Install requirements FIRST (this will install torch, torchvision, torchaudio)
     pip install -r requirements.txt
-    # Reinstall torchaudio from CUDA index to ensure requirements.txt didn't override with CPU version
-    pip install torchaudio==${TORCH_VERSION} --index-url https://download.pytorch.org/whl/cu128 --no-deps --force-reinstall
+
+    # NOW get the installed torch version WITH the cuda suffix (e.g., 2.9.1+cu128)
+    TORCH_VERSION_FULL=$(pip show torch | grep "^Version:" | cut -d' ' -f2)
+    echo "Detected torch version: $TORCH_VERSION_FULL"
+
+    # Force reinstall torchaudio and torchvision from PyTorch CUDA index to match torch version
+    # This MUST happen AFTER requirements.txt to override any mismatched versions
+    pip install --force-reinstall --no-deps \
+        torchaudio==${TORCH_VERSION_FULL} \
+        torchvision==${TORCH_VERSION_FULL} \
+        --index-url https://download.pytorch.org/whl/cu128
+
+    # Verify the versions match
+    echo "=== Verifying PyTorch package versions ==="
+    pip show torch | grep "^Version:"
+    pip show torchaudio | grep "^Version:"
+    pip show torchvision | grep "^Version:"
+
     # Install additional dependencies that custom nodes require
     pip install opencv-python scikit-image piexif segment-anything
     # Install ComfyUI Manager and other custom node dependencies
