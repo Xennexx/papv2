@@ -39,32 +39,47 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
     cd $REPO_DIR
     pip install xformers
 
-    # Install requirements FIRST (this will install torch, torchvision, torchaudio)
+    # Install requirements.txt (this will install torch, torchvision, torchaudio)
     pip install -r requirements.txt
-
-    # NOW get the installed torch version WITH the cuda suffix (e.g., 2.9.1+cu128)
-    TORCH_VERSION_FULL=$(pip show torch | grep "^Version:" | cut -d' ' -f2)
-    echo "Detected torch version: $TORCH_VERSION_FULL"
-
-    # Force reinstall torchaudio and torchvision from PyTorch CUDA index to match torch version
-    # This MUST happen AFTER requirements.txt to override any mismatched versions
-    pip install --force-reinstall --no-deps \
-        torchaudio==${TORCH_VERSION_FULL} \
-        torchvision==${TORCH_VERSION_FULL} \
-        --index-url https://download.pytorch.org/whl/cu128
-
-    # Verify the versions match
-    echo "=== Verifying PyTorch package versions ==="
-    pip show torch | grep "^Version:"
-    pip show torchaudio | grep "^Version:"
-    pip show torchvision | grep "^Version:"
 
     # Install additional dependencies that custom nodes require
     pip install opencv-python scikit-image piexif segment-anything
     # Install ComfyUI Manager and other custom node dependencies
+    # NOTE: ultralytics requires torch<2.10 which can downgrade torch and cause mismatch!
     pip install GitPython toml rich uv matplotlib ultralytics lpips simpleeval
 
-    
+    # === VERSION CHECK AND FIX ===
+    # Must happen AFTER all pip installs, as some packages (like ultralytics) can downgrade torch
+    echo "=== Checking PyTorch/torchaudio version compatibility ==="
+    TORCH_VERSION=$(python -c "import torch; print(torch.__version__)")
+    # torchaudio may fail to import if there's a mismatch, so use pip show instead
+    TORCHAUDIO_VERSION=$(pip show torchaudio | grep "^Version:" | cut -d' ' -f2)
+    echo "Detected torch version: $TORCH_VERSION"
+    echo "Detected torchaudio version: $TORCHAUDIO_VERSION"
+
+    # Extract base version (e.g., "2.9.1" from "2.9.1+cu128" or "2.10.0")
+    TORCH_BASE=$(echo "$TORCH_VERSION" | cut -d'+' -f1)
+    TORCHAUDIO_BASE=$(echo "$TORCHAUDIO_VERSION" | cut -d'+' -f1)
+
+    if [[ "$TORCH_BASE" != "$TORCHAUDIO_BASE" ]]; then
+        echo "WARNING: Version mismatch detected! torch=$TORCH_VERSION, torchaudio=$TORCHAUDIO_VERSION"
+        echo "Reinstalling torchaudio to match torch version..."
+        # Reinstall torchaudio from PyTorch CUDA index to match torch
+        pip install --force-reinstall --no-deps \
+            torchaudio==${TORCH_VERSION} \
+            --index-url https://download.pytorch.org/whl/cu128 || {
+            echo "ERROR: Failed to reinstall torchaudio from cu128 index"
+            echo "Trying without CUDA suffix..."
+            pip install --force-reinstall --no-deps torchaudio==${TORCH_BASE}
+        }
+    else
+        echo "Versions match: torch=$TORCH_VERSION, torchaudio=$TORCHAUDIO_VERSION"
+    fi
+
+    # Verify the final versions
+    echo "=== Final PyTorch package versions ==="
+    python -c "import torch; import torchaudio; print('torch:', torch.__version__); print('torchaudio:', torchaudio.__version__); print('CUDA:', torch.cuda.is_available())"
+
     touch /tmp/sd_comfy.prepared
 else
     
