@@ -38,10 +38,12 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
     
     cd $REPO_DIR
     pip install xformers
-    # Get the installed torch version and install matching torchaudio
+    # Get the installed torch version and install matching torchaudio from PyTorch CUDA index
     TORCH_VERSION=$(pip show torch | grep "^Version:" | cut -d' ' -f2 | cut -d'+' -f1)
-    pip install torchvision torchaudio==${TORCH_VERSION} --no-deps
+    pip install torchvision torchaudio==${TORCH_VERSION} --index-url https://download.pytorch.org/whl/cu128 --no-deps
     pip install -r requirements.txt
+    # Reinstall torchaudio from CUDA index to ensure requirements.txt didn't override with CPU version
+    pip install torchaudio==${TORCH_VERSION} --index-url https://download.pytorch.org/whl/cu128 --no-deps --force-reinstall
     # Install additional dependencies that custom nodes require
     pip install opencv-python scikit-image piexif segment-anything
     # Install ComfyUI Manager and other custom node dependencies
