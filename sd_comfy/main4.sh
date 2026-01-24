@@ -8,38 +8,28 @@ source .env
 # Set up a trap to call the error_exit function on ERR signal
 trap 'error_exit "### ERROR ###"' ERR
 
-echo "### Setting up Stable Diffusion Comfy ###"
-log "Setting up Stable Diffusion Comfy"
-if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
+echo "### Setting up Stable Diffusion Comfy (Instance 4) ###"
+log "Setting up Stable Diffusion Comfy Instance 4"
 
-    
-    TARGET_REPO_URL="https://github.com/comfyanonymous/ComfyUI.git" \
-    TARGET_REPO_DIR=$REPO_DIR \
-    UPDATE_REPO=$SD_COMFY_UPDATE_REPO \
-    UPDATE_REPO_COMMIT=$SD_COMFY_UPDATE_REPO_COMMIT \
-    prepare_repo 
+# Wait for main.sh to complete the installation (creates prepared file)
+# Do NOT create venv or touch prepared file - that's main.sh's job
+echo "Waiting for main.sh to complete installation..."
+WAIT_COUNT=0
+MAX_WAIT=120  # Wait up to 10 minutes (120 x 5 seconds)
+while [[ ! -f "/tmp/sd_comfy.prepared" ]]; do
+    sleep 5
+    WAIT_COUNT=$((WAIT_COUNT + 1))
+    if [[ $WAIT_COUNT -ge $MAX_WAIT ]]; then
+        echo "ERROR: Timeout waiting for main.sh to complete installation"
+        exit 1
+    fi
+    if [[ $((WAIT_COUNT % 12)) -eq 0 ]]; then
+        echo "Still waiting for main.sh... ($WAIT_COUNT x 5s elapsed)"
+    fi
+done
 
-    symlinks=(
-      "$REPO_DIR/output:$IMAGE_OUTPUTS_DIR/stable-diffusion-comfy"
-      "$REPO_DIR/temp:$IMAGE_OUTPUTS_DIR/stable-diffusion-comfy/temp"
-
-    )
-    prepare_link "${symlinks[@]}"
-    rm -rf $VENV_DIR/sd_comfy-env
-    
-    
-    python3.10 -m venv $VENV_DIR/sd_comfy-env
-    
-    source $VENV_DIR/sd_comfy-env/bin/activate
-    
-    cd $REPO_DIR
-    
-    touch /tmp/sd_comfy.prepared
-else
-    
-    source $VENV_DIR/sd_comfy-env/bin/activate
-    
-fi
+echo "main.sh completed, activating venv..."
+source $VENV_DIR/sd_comfy-env/bin/activate
 log "Finished Preparing Environment for Stable Diffusion Comfy"
 
 
@@ -47,7 +37,7 @@ if [[ -z "$INSTALL_ONLY" ]]; then
   echo "### Starting Stable Diffusion Comfy ###"
   log "Starting Stable Diffusion Comfy"
   cd "$REPO_DIR"
-  PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --port 7102" > $LOG_DIR/sd_comfy.log 2>&1 &
+  PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --port 7102" > $LOG_DIR/sd_comfy4.log 2>&1 &
   echo $! > /tmp/sd_comfy.pid
 fi
 

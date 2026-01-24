@@ -58,16 +58,35 @@ setup_environment() {
 
         pip install --upgrade pip
         pip install --upgrade wheel setuptools
-        
+
         cd $REPO_DIR
         pip install xformers
-        pip install torchvision torchaudio --no-deps
+
+        # Install requirements FIRST (this will install torch, torchvision, torchaudio)
         pip install -r requirements.txt
+
+        # NOW get the installed torch version WITH the cuda suffix (e.g., 2.9.1+cu128)
+        TORCH_VERSION_FULL=$(pip show torch | grep "^Version:" | cut -d' ' -f2)
+        echo "Detected torch version: $TORCH_VERSION_FULL"
+
+        # Force reinstall torchaudio and torchvision from PyTorch CUDA index to match torch version
+        # This MUST happen AFTER requirements.txt to override any mismatched versions
+        pip install --force-reinstall --no-deps \
+            torchaudio==${TORCH_VERSION_FULL} \
+            torchvision==${TORCH_VERSION_FULL} \
+            --index-url https://download.pytorch.org/whl/cu128
+
+        # Verify the versions match
+        echo "=== Verifying PyTorch package versions ==="
+        pip show torch | grep "^Version:"
+        pip show torchaudio | grep "^Version:"
+        pip show torchvision | grep "^Version:"
+
         # Install additional dependencies that custom nodes require
         pip install opencv-python scikit-image piexif segment-anything
         # Install ComfyUI Manager and other custom node dependencies
-        pip install GitPython toml rich uv matplotlib ultralytics lpips
-        
+        pip install GitPython toml rich uv matplotlib ultralytics lpips simpleeval
+
         touch /tmp/sd_comfy.prepared
     else
         source $VENV_DIR/sd_comfy-env/bin/activate

@@ -1,7 +1,7 @@
 # ComfyUI Paperspace Troubleshooting Guide
 
 **Last Updated:** 2026-01-24
-**Issue Status:** INVESTIGATING - Fix attempt #5
+**Issue Status:** FIX ATTEMPT #6 - Race condition in startup scripts
 
 ## Environment Overview
 
@@ -11,92 +11,127 @@
 - **Venv Location:** `/tmp/sd_comfy-env` (NOT PERSISTENT - recreated each boot)
 - **ComfyUI Location:** `/storage/stable-diffusion-comfy/`
 
-## Current Issue: torchaudio Version Mismatch
+## Current Issue: Empty Venv + torchaudio Version Mismatch
 
-### Symptoms
-- ComfyUI instances keep rebooting/crashing
-- Error related to torchaudio version incompatibility
-- PyTorch version: 2.9.1+cu128
-- torchaudio gets installed as: 2.10.0 (WRONG - should be 2.9.1+cu128)
+### Symptoms (Attempt 6 Investigation)
+- ComfyUI instances crash-looping with `ModuleNotFoundError: No module named 'yaml'`
+- Venv exists but contains NO packages (only base pip and setuptools)
+- `/tmp/sd_comfy.prepared` file exists (indicating "installation complete")
+- Torch not installed at all
 
-### Root Cause Analysis
+### Root Cause (FOUND!)
 
-1. **requirements.txt** in ComfyUI (`/storage/stable-diffusion-comfy/requirements.txt`) contains bare `torchaudio` without version pin
-2. When `pip install -r requirements.txt` runs, it installs LATEST torchaudio (2.10.0) from PyPI
-3. Previous fix attempts tried to install correct version BEFORE requirements.txt - got overwritten
-4. The CUDA index URL requires the FULL version string with suffix (e.g., `2.9.1+cu128`, not `2.9.1`)
+**TWO BUGS WORKING TOGETHER:**
 
-### Previous Fix Attempts
+1. **Race Condition Bug:** main2.sh, main3.sh, main4.sh could each create an EMPTY venv and touch the prepared file WITHOUT installing any packages
 
-#### Attempt 1-3: Unknown (before documentation)
-- Modified entry.sh and main.sh
-- Details lost due to session resets
+2. **Flow Breakdown:**
+   - entry.sh runs scripts sequentially: main.sh -> main2.sh -> main3.sh -> main4.sh
+   - If main.sh FAILS during pip install (due to xformers build or network issues)
+   - entry.sh continues (no `set -e`) and runs main2.sh
+   - main2.sh sees no prepared file, creates empty venv, touches prepared file
+   - main3.sh and main4.sh see prepared file exists, skip install
+   - Result: Empty venv with prepared file = broken state
 
-#### Attempt 4: (2026-01-24)
-- Modified main.sh to get torch version and install matching torchaudio
-- **Problem:** Used `cut -d'+' -f1` which removed the `+cu128` suffix
-- **Problem:** Installed torchaudio BEFORE requirements.txt, which then overwrote it
-- **Result:** Failed - torchaudio still mismatched after reboot
+3. **Original Bug:** main2.sh/main3.sh/main4.sh had FULL venv creation blocks that could wipe and recreate the venv:
+   ```bash
+   # OLD BROKEN CODE in main2.sh, main3.sh, main4.sh:
+   if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
+       rm -rf $VENV_DIR/sd_comfy-env
+       python3.10 -m venv $VENV_DIR/sd_comfy-env
+       touch /tmp/sd_comfy.prepared  # NO PACKAGES INSTALLED!
+   fi
+   ```
 
-#### Attempt 5: (2026-01-24) - CURRENT
-- **Fix Applied:** Modified main.sh to:
-  1. Install requirements.txt FIRST
-  2. Get FULL torch version WITH cuda suffix
-  3. Force reinstall torchaudio AFTER requirements.txt
-  4. Added verification output to confirm versions match
+### Fix Applied (Attempt 6)
+
+**Modified main2.sh, main3.sh, main4.sh to:**
+1. REMOVE the venv creation/prepared file touch logic
+2. Instead, WAIT for main.sh to complete (poll for prepared file)
+3. Only main.sh can create the venv and prepared file
+
+**New code pattern:**
+```bash
+# Wait for main.sh to complete the installation (creates prepared file)
+# Do NOT create venv or touch prepared file - that's main.sh's job
+WAIT_COUNT=0
+MAX_WAIT=120  # Wait up to 10 minutes (120 x 5 seconds)
+while [[ ! -f "/tmp/sd_comfy.prepared" ]]; do
+    sleep 5
+    WAIT_COUNT=$((WAIT_COUNT + 1))
+    if [[ $WAIT_COUNT -ge $MAX_WAIT ]]; then
+        echo "ERROR: Timeout waiting for main.sh to complete installation"
+        exit 1
+    fi
+done
+source $VENV_DIR/sd_comfy-env/bin/activate
+```
+
+**Also fixed:**
+- Distinct log files: sd_comfy2.log, sd_comfy3.log, sd_comfy4.log (were all writing to sd_comfy.log)
+- Updated manage.sh with proper torchaudio fix
 
 ### Files Modified
 
-#### `/notebooks/sd_comfy/main.sh`
-Key changes:
-```bash
-# Install requirements FIRST (this will install torch, torchvision, torchaudio)
-pip install -r requirements.txt
+| File | Change |
+|------|--------|
+| `/notebooks/sd_comfy/main2.sh` | Replaced venv creation with wait loop |
+| `/notebooks/sd_comfy/main3.sh` | Replaced venv creation with wait loop |
+| `/notebooks/sd_comfy/main4.sh` | Replaced venv creation with wait loop |
+| `/notebooks/sd_comfy/manage.sh` | Added torchaudio version fix |
 
-# NOW get the installed torch version WITH the cuda suffix (e.g., 2.9.1+cu128)
-TORCH_VERSION_FULL=$(pip show torch | grep "^Version:" | cut -d' ' -f2)
+### Previous Fix Attempts
 
-# Force reinstall torchaudio and torchvision from PyTorch CUDA index
-pip install --force-reinstall --no-deps \
-    torchaudio==${TORCH_VERSION_FULL} \
-    torchvision==${TORCH_VERSION_FULL} \
-    --index-url https://download.pytorch.org/whl/cu128
-```
+#### Attempt 1-4: (before documentation)
+- Various edits to entry.sh and main.sh
+- Details lost due to session resets
+
+#### Attempt 5: (2026-01-24)
+- Fixed main.sh to install requirements.txt FIRST, then force reinstall torchaudio AFTER
+- **This fix was correct** but couldn't work because main.sh was failing and main2.sh was creating empty venv
+
+#### Attempt 6: (2026-01-24) - CURRENT
+- Found the actual root cause: race condition in startup scripts
+- Fixed main2.sh, main3.sh, main4.sh to wait for main.sh instead of creating their own venv
 
 ### How to Verify Fix Worked
 
 After reboot, run:
 ```bash
+# Check if packages are installed
+/tmp/sd_comfy-env/bin/pip list | grep -E "^(torch|torchaudio|torchvision)"
+
+# Check versions match
 /tmp/sd_comfy-env/bin/python -c "import torch; import torchaudio; print('torch:', torch.__version__); print('torchaudio:', torchaudio.__version__)"
 ```
 
-Expected output (versions should match):
+Expected output:
 ```
 torch: 2.9.1+cu128
 torchaudio: 2.9.1+cu128
 ```
 
-### Manual Fix (if automatic fix fails)
+### Manual Testing (Without Reboot)
 
 ```bash
-# Stop all instances
-cd /notebooks/sd_comfy && bash manage.sh stop all
+# Reset state
+rm -f /tmp/sd_comfy.prepared
+rm -rf /tmp/sd_comfy-env
 
-# Fix torchaudio
-/tmp/sd_comfy-env/bin/pip install --force-reinstall --no-deps \
-    torchaudio==2.9.1+cu128 \
-    --index-url https://download.pytorch.org/whl/cu128
+# Run entry.sh (or just main.sh for faster test)
+cd /notebooks && bash entry.sh
 
-# Restart instances
-bash manage.sh start all
+# Then verify
+/tmp/sd_comfy-env/bin/python -c "import torch; import torchaudio; print('torch:', torch.__version__); print('torchaudio:', torchaudio.__version__)"
 ```
 
 ### Architecture Notes
 
-- **main.sh** - Does ALL package installation, creates `/tmp/sd_comfy.prepared`
-- **main2.sh, main3.sh, main4.sh** - Skip install if prepared file exists, just start instances
+- **entry.sh** - Runs on boot, calls main.sh through main4.sh sequentially
+- **main.sh** - Does ALL package installation, creates `/tmp/sd_comfy.prepared`, starts instance 1
+- **main2.sh, main3.sh, main4.sh** - Wait for prepared file, then start instances 2, 3, 4
 - All instances share the SAME venv at `/tmp/sd_comfy-env`
-- **manage.sh** - Control script for start/stop/restart/status of instances
+- **manage.sh** - Utility script for manual start/stop/restart/status
 
 ### Instance Configuration
 
@@ -109,15 +144,12 @@ bash manage.sh start all
 
 ### Next Steps If Issue Persists
 
-1. Check if `/tmp/sd_comfy.prepared` is being created too early (before fix runs)
-2. Consider moving venv to `/storage/` for persistence (would require .env changes)
-3. Check if ComfyUI-Manager is reinstalling packages on first launch
-4. Check custom nodes for their own pip installs
-5. Consider patching ComfyUI's requirements.txt to pin torchaudio version
+1. Check if main.sh itself is failing - look at logs or run manually
+2. Consider moving venv to `/storage/` for persistence (edit .env VENV_DIR)
+3. Check if xformers installation is causing the main.sh failure
+4. Consider adding `|| true` after non-critical pip installs to prevent cascade failures
 
 ### Pushing Changes
-
-The GitHub token is provided by the user in the conversation. Push changes with:
 
 ```bash
 cd /notebooks
@@ -134,5 +166,5 @@ When starting a new session:
 1. Read this file first
 2. Check current torch/torchaudio versions
 3. Check if instances are running with `bash /notebooks/sd_comfy/manage.sh status all`
-4. If issue persists, try next fix from "Next Steps" section
+4. If issue persists, check what's in the venv: `/tmp/sd_comfy-env/bin/pip list`
 5. Update this document with findings and push to GitHub
