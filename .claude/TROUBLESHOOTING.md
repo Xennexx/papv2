@@ -1,7 +1,7 @@
 # ComfyUI Paperspace Troubleshooting Guide
 
 **Last Updated:** 2026-01-24
-**Issue Status:** FIXED - Attempt #7
+**Issue Status:** FIXED - torchaudio mismatch (Attempt #7) + entry.sh cleanup (Attempt #8)
 
 ## Environment Overview
 
@@ -115,11 +115,148 @@ bash /notebooks/sd_comfy/manage.sh start all
 
 ---
 
+## Boot Time Optimization (Attempt #8)
+
+### Problem
+`entry.sh` had duplicate operations causing ~1.5-2.5 minutes of wasted time on each boot:
+- Node.js installed TWICE
+- PM2 installed TWICE
+- `apt-get update` ran TWICE
+- System python packages installed (unnecessary - venv has them)
+
+### Fix Applied (2026-01-24)
+
+Removed duplicate operations from `/notebooks/entry.sh`:
+
+| Lines Removed | Content | Reason |
+|---------------|---------|--------|
+| 54 | `apt-get update` | Duplicate of line 43 |
+| 58-61 | System pip installs (einops, torchsde, spandrel, kornia) | Already in venv via main.sh |
+| 88-92 | Node.js installation (second time) | Duplicate of lines 64-68 |
+| 94-96 | System pip install (opencv-python, etc.) | Already in venv via main.sh |
+| 103-105 | PM2 installation (second time) | Duplicate of lines 70-72 |
+
+**Result:** File reduced from 174 lines to 155 lines
+
+### Verification Performed
+
+Simulated fresh boot by:
+1. Killed PM2 processes
+2. Uninstalled PM2 (`npm uninstall -g pm2`)
+3. Removed Node.js (`apt-get remove -y nodejs`)
+4. Ran `entry.sh`
+
+**Results:**
+- ✅ Node.js: v20.20.0
+- ✅ PM2: v6.0.14
+- ✅ PM2 Services: 3 processes online (auto-restart, image-cleanup, logrotate)
+- ✅ ComfyUI Instance 1: RUNNING (port 7005)
+- ✅ ComfyUI Instance 2: RUNNING (port 7100)
+- ✅ torch: 2.9.1+cu128
+- ✅ torchaudio: 2.9.1+cu128 (MATCHING!)
+- ✅ CUDA: Available
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `entry.sh` | Removed duplicate apt-get update, Node.js install, PM2 install, system pip installs |
+
+---
+
 ## Session Handoff Notes
 
-When starting a new session:
-1. Read this file first
-2. Check if instances are running: `bash /notebooks/sd_comfy/manage.sh status all`
-3. Check torch/torchaudio versions match (see verify command above)
-4. If mismatch, use manual fix above
-5. Update this document with findings and push to GitHub
+### Quick Start for New Claude Session
+
+**If user says "it's still not working after reboot":**
+
+1. **Read this file first** - it has all context
+2. **Check current state:**
+   ```bash
+   # Check instances
+   bash /notebooks/sd_comfy/manage.sh status all
+
+   # Check torch versions
+   /tmp/sd_comfy-env/bin/python -c "import torch; import torchaudio; print('torch:', torch.__version__); print('torchaudio:', torchaudio.__version__)"
+
+   # Check PM2 services
+   pm2 list
+
+   # Check boot logs
+   tail -100 /tmp/entry_boot.log
+   tail -50 /tmp/log/sd_comfy.log
+   ```
+
+3. **Common issues to check:**
+   - torchaudio version mismatch → Use manual fix in "Manual Fix" section above
+   - PM2 not running → `pm2 status` then check `/tmp/pm2_startup.log`
+   - ComfyUI not starting → Check individual log files in `/tmp/log/`
+   - Venv missing/empty → Check if `/tmp/sd_comfy.prepared` exists and has content
+
+4. **Key files to examine:**
+   - `/notebooks/entry.sh` - Main boot script
+   - `/notebooks/sd_comfy/main.sh` - Package installation + Instance 1
+   - `/notebooks/sd_comfy/main2.sh`, `main3.sh`, `main4.sh` - Instances 2-4
+   - `/notebooks/sd_comfy/manage.sh` - Manual control utility
+
+### What Was Done So Far
+
+| Attempt | Fix | Status |
+|---------|-----|--------|
+| 1-4 | Various torchaudio fixes | Failed |
+| 5 | Fixed main.sh torchaudio logic | Race condition caused empty venv |
+| 6 | Fixed race condition (main2-4 wait for main.sh) | Version check ran too early |
+| 7 | Moved version check to after ALL pip installs | **FIXED** |
+| 8 | Cleaned up entry.sh duplicates (Node.js, PM2, pip) | **OPTIMIZED** - saves ~1.5-2.5 min |
+
+### GitHub Setup (if needed)
+
+The repo uses SSH key authentication:
+```bash
+# Check if key exists
+ls -la ~/.ssh/id_*
+
+# Test GitHub connection
+ssh -T git@github.com
+
+# If key missing, generate new one:
+ssh-keygen -t ed25519 -C "your_email@example.com"
+cat ~/.ssh/id_ed25519.pub
+# Add to GitHub: Settings → SSH Keys
+```
+
+### To Push Changes to GitHub
+
+```bash
+cd /notebooks
+git add -A
+git commit -m "Description of changes
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
+git push origin master
+```
+
+### Architecture Diagram
+
+```
+entry.sh (boot)
+    ├── apt-get update + install deps
+    ├── Install Node.js 20.x
+    ├── Install PM2
+    ├── main.sh → Creates venv, installs ALL packages, starts Instance 1
+    │       └── Touches /tmp/sd_comfy.prepared when done
+    ├── main2.sh → Waits for prepared file, starts Instance 2
+    ├── main3.sh → Waits for prepared file, starts Instance 3
+    ├── main4.sh → Waits for prepared file, starts Instance 4
+    └── start_pm2_services.sh → Starts auto-restart + image-cleanup
+```
+
+### Persistent vs Non-Persistent
+
+| Location | Persistent? | Contents |
+|----------|-------------|----------|
+| `/storage/` | ✅ YES | Models, ComfyUI repo, outputs |
+| `/notebooks/` | ❌ NO | Pulled from GitHub on each boot |
+| `/tmp/` | ❌ NO | Venv, logs, PID files |
+
+**Important:** All code changes must be pushed to GitHub or they will be lost on reboot!

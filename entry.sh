@@ -51,14 +51,9 @@ mkdir -p $LOG_DIR
 
 
 echo "Installing common dependencies"
-apt-get update
 apt-get install -qq -y curl jq git-lfs ninja-build \
     aria2 zip python3-venv python3-dev python3.10 \
     python3.10-venv python3.10-dev python3.10-tk  > /dev/null
-/usr/local/bin/python -m pip install einops > /dev/null
-/usr/local/bin/python -m pip install torchsde > /dev/null
-/usr/local/bin/python -m pip install spandrel
-/usr/local/bin/python -m pip install kornia
 apt-get install -y htop > /dev/null
 
 # Update Node.js to version 20.x
@@ -85,24 +80,10 @@ if [[ ! -d $WORKING_DIR/image_outputs ]]; then
   ln -s $IMAGE_OUTPUTS_DIR $WORKING_DIR/image_outputs
 fi
 
-# Update Node.js to version 20.x (ensure latest)
-echo "Updating Node.js to version 20.x"
-apt-get remove -y nodejs > /dev/null 2>&1 || true
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash - > /dev/null
-apt-get install -y nodejs > /dev/null
-
-# Install important Python dependencies for ComfyUI
-echo "Installing Python dependencies for ComfyUI"
-pip install opencv-python scikit-image piexif segment-anything > /dev/null
-
 bash /notebooks/sd_comfy/main.sh
 bash /notebooks/sd_comfy/main2.sh
 bash /notebooks/sd_comfy/main3.sh
 bash /notebooks/sd_comfy/main4.sh
-
-# Install PM2 globally (ensure it's available)
-echo "Installing PM2 for process management"
-npm install -g pm2 > /dev/null 2>&1
 
 # Start background services with PM2 using robust startup script
 echo "Starting ComfyUI background services with PM2..."
