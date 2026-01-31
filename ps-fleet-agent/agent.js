@@ -58,11 +58,33 @@ function getSystemStats() {
     }));
   } catch (_) { /* pm2 not available */ }
 
+  // Detect running ComfyUI instances by checking which ports are listening
+  const comfyInstances = [];
+  const instanceMap = [
+    { port: 7005, path: '/sd-comfy/', name: 'ComfyUI 1' },
+    { port: 7100, path: '/com2/', name: 'ComfyUI 2' },
+    { port: 7101, path: '/com3/', name: 'ComfyUI 3' },
+    { port: 7102, path: '/com4/', name: 'ComfyUI 4' },
+    { port: 7103, path: '/com5/', name: 'ComfyUI 5' }
+  ];
+  for (const inst of instanceMap) {
+    try {
+      const listening = execSync(`ss -tlnp 2>/dev/null | grep ':${inst.port} '`, {
+        timeout: 3000, encoding: 'utf-8'
+      }).trim();
+      if (listening) {
+        const url = PAPERSPACE_FQDN ? `https://${PAPERSPACE_FQDN}${inst.path}` : null;
+        comfyInstances.push({ name: inst.name, port: inst.port, path: inst.path, url, status: 'running' });
+      }
+    } catch (_) { /* port not listening */ }
+  }
+
   return {
     uptime,
     memory: { total: totalMem, used: usedMem, free: freeMem },
     gpu: gpuInfo,
     pm2Services,
+    comfyInstances,
     loadAvg: os.loadavg()
   };
 }
