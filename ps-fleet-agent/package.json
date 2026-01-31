@@ -1,0 +1,11 @@
+{
+  "name": "ps-fleet-agent",
+  "version": "1.0.0",
+  "description": "Paperspace fleet management agent - connects to stuffer.ai dashboard",
+  "main": "agent.js",
+  "dependencies": {
+    "socket.io-client": "^4.7.4",
+    "node-pty": "^1.0.0",
+    "dotenv": "^16.4.1"
+  }
+}

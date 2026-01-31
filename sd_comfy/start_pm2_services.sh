@@ -48,6 +48,8 @@ fi
 verify_pm2_service() {
     local service_name="$1"
     local script_path="$2"
+    local service_cwd="${3:-/notebooks/sd_comfy}"
+    local max_mem="${4:-500M}"
     local max_attempts=5
     local attempt=1
     
@@ -80,9 +82,9 @@ verify_pm2_service() {
         echo "  Starting $service_name..."
         pm2 start "$script_path" \
             --name "$service_name" \
-            --cwd /notebooks/sd_comfy \
+            --cwd "$service_cwd" \
             --interpreter node \
-            --max-memory-restart 500M \
+            --max-memory-restart "$max_mem" \
             --time \
             --merge-logs \
             --log-date-format "YYYY-MM-DD HH:mm:ss" \
@@ -97,7 +99,7 @@ verify_pm2_service() {
         if pm2 list 2>/dev/null | grep -q "$service_name.*online"; then
             # Verify it's actually working by checking logs
             sleep 2
-            if pm2 logs "$service_name" --lines 5 --nostream 2>&1 | grep -q "started\|Starting\|Cleaning\|queue\|cleanup service\|auto-restart service\|cleanup completed\|continuous.*cleanup"; then
+            if pm2 logs "$service_name" --lines 5 --nostream 2>&1 | grep -q "started\|Starting\|Cleaning\|queue\|cleanup service\|auto-restart service\|cleanup completed\|continuous.*cleanup\|fleet-agent\|Connected"; then
                 echo "  ✓ $service_name started and functioning"
                 return 0
             else
@@ -130,8 +132,10 @@ if [ "$COMFYUI_RUNNING" -gt 0 ]; then
     # Only stop our specific services, don't kill the entire PM2 daemon
     pm2 stop comfyui-auto-restart > /dev/null 2>&1 || true
     pm2 stop comfyui-image-cleanup > /dev/null 2>&1 || true
+    pm2 stop fleet-agent > /dev/null 2>&1 || true
     pm2 delete comfyui-auto-restart > /dev/null 2>&1 || true
     pm2 delete comfyui-image-cleanup > /dev/null 2>&1 || true
+    pm2 delete fleet-agent > /dev/null 2>&1 || true
     sleep 2
 else
     echo "No ComfyUI instances detected - performing full PM2 cleanup..."
@@ -182,6 +186,26 @@ else
     ALL_SERVICES_OK=false
 fi
 
+# Fleet agent service
+echo ""
+echo "3. Fleet agent service:"
+# Install dependencies on first boot
+if [ ! -d /notebooks/ps-fleet-agent/node_modules ]; then
+    echo "  Installing fleet-agent dependencies..."
+    cd /notebooks/ps-fleet-agent && npm install --production 2>&1 | tail -3
+    cd /notebooks/sd_comfy
+fi
+if [ -f /storage/.fleet-env ] && grep -qv '<shared-secret>' /storage/.fleet-env 2>/dev/null; then
+    if verify_pm2_service "fleet-agent" "/notebooks/ps-fleet-agent/agent.js" "/notebooks/ps-fleet-agent" "200M"; then
+        echo "  ✓ Fleet agent service setup complete"
+    else
+        echo "  ✗ WARNING: Fleet agent service failed to start!"
+        ALL_SERVICES_OK=false
+    fi
+else
+    echo "  ⚠ Skipping fleet-agent: /storage/.fleet-env not configured (still has placeholder token)"
+fi
+
 # Save PM2 process list
 echo ""
 echo "Saving PM2 configuration..."
@@ -221,6 +245,14 @@ if pm2 list 2>/dev/null | grep -q "comfyui-image-cleanup.*online"; then
     echo "  Last log: $RECENT_LOG"
 else
     echo "✗ Image cleanup: OFFLINE"
+fi
+
+if pm2 list 2>/dev/null | grep -q "fleet-agent.*online"; then
+    echo "✓ Fleet agent: ONLINE"
+    RECENT_LOG=$(pm2 logs fleet-agent --lines 1 --nostream 2>&1 | tail -1)
+    echo "  Last log: $RECENT_LOG"
+else
+    echo "- Fleet agent: NOT RUNNING (check /storage/.fleet-env)"
 fi
 
 echo "==================================="
