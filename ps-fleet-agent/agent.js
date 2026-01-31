@@ -134,13 +134,15 @@ socket.on('connect', () => {
   }, 2000);
 });
 
-// Terminal management
+// Terminal management — accept both sessionId (server uses) and terminalId (legacy)
 socket.on('terminal:create', (data) => {
-  const { terminalId, cols = 80, rows = 24 } = data;
-  console.log(`[fleet-agent] Creating terminal ${terminalId} (${cols}x${rows})`);
+  const id = data.sessionId || data.terminalId;
+  const cols = data.cols || 80;
+  const rows = data.rows || 24;
+  console.log(`[fleet-agent] Creating terminal ${id} (${cols}x${rows})`);
 
-  if (terminals.has(terminalId)) {
-    console.log(`[fleet-agent] Terminal ${terminalId} already exists`);
+  if (terminals.has(id)) {
+    console.log(`[fleet-agent] Terminal ${id} already exists`);
     return;
   }
 
@@ -154,48 +156,48 @@ socket.on('terminal:create', (data) => {
       env: { ...process.env, TERM: 'xterm-256color' }
     });
 
-    terminals.set(terminalId, term);
+    terminals.set(id, term);
 
-    term.onData((data) => {
-      socket.emit('terminal:output', { terminalId, data });
+    term.onData((output) => {
+      socket.emit('terminal:output', { sessionId: id, data: output });
     });
 
     term.onExit(({ exitCode }) => {
-      console.log(`[fleet-agent] Terminal ${terminalId} exited (code: ${exitCode})`);
-      terminals.delete(terminalId);
-      socket.emit('terminal:exit', { terminalId, exitCode });
+      console.log(`[fleet-agent] Terminal ${id} exited (code: ${exitCode})`);
+      terminals.delete(id);
+      socket.emit('terminal:exit', { sessionId: id, code: exitCode });
     });
 
-    socket.emit('terminal:created', { terminalId });
+    socket.emit('terminal:created', { sessionId: id });
   } catch (err) {
-    console.error(`[fleet-agent] Failed to create terminal ${terminalId}:`, err.message);
-    socket.emit('terminal:error', { terminalId, error: err.message });
+    console.error(`[fleet-agent] Failed to create terminal ${id}:`, err.message);
+    socket.emit('terminal:error', { sessionId: id, error: err.message });
   }
 });
 
 socket.on('terminal:input', (data) => {
-  const { terminalId, data: input } = data;
-  const term = terminals.get(terminalId);
+  const id = data.sessionId || data.terminalId;
+  const term = terminals.get(id);
   if (term) {
-    term.write(input);
+    term.write(data.data);
   }
 });
 
 socket.on('terminal:resize', (data) => {
-  const { terminalId, cols, rows } = data;
-  const term = terminals.get(terminalId);
+  const id = data.sessionId || data.terminalId;
+  const term = terminals.get(id);
   if (term) {
-    try { term.resize(cols, rows); } catch (_) {}
+    try { term.resize(data.cols, data.rows); } catch (_) {}
   }
 });
 
 socket.on('terminal:close', (data) => {
-  const { terminalId } = data;
-  const term = terminals.get(terminalId);
+  const id = data.sessionId || data.terminalId;
+  const term = terminals.get(id);
   if (term) {
-    console.log(`[fleet-agent] Closing terminal ${terminalId}`);
+    console.log(`[fleet-agent] Closing terminal ${id}`);
     try { term.kill(); } catch (_) {}
-    terminals.delete(terminalId);
+    terminals.delete(id);
   }
 });
 
