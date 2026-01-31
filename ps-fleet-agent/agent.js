@@ -4,26 +4,14 @@
 const { io } = require('socket.io-client');
 const pty = require('node-pty');
 const os = require('os');
-const fs = require('fs');
-const path = require('path');
 const { execSync } = require('child_process');
 
-// Load config from /storage/.fleet-env
-const envPath = '/storage/.fleet-env';
-if (fs.existsSync(envPath)) {
-  require('dotenv').config({ path: envPath });
-}
-
-const SERVER_URL = process.env.SERVER_URL || 'https://stuffer.ai';
-const AUTH_TOKEN = process.env.AUTH_TOKEN || '';
+// Config — hardcoded so it works immediately when pulled from GitHub
+const SERVER_URL = 'https://stuffer.ai';
+const AUTH_TOKEN = 'ae6064f5b65d4666d14d987fd1c31c8bf33ef9ed2d2cf00e43b047acf97ed20f';
 const NOTEBOOK_NAME = process.env.NOTEBOOK_NAME || process.env.PAPERSPACE_NOTEBOOK_ID || os.hostname();
 const NOTEBOOK_ID = process.env.PAPERSPACE_NOTEBOOK_ID || os.hostname();
 const PAPERSPACE_FQDN = process.env.PAPERSPACE_FQDN || '';
-
-if (!AUTH_TOKEN) {
-  console.error('[fleet-agent] ERROR: AUTH_TOKEN not set in /storage/.fleet-env');
-  process.exit(1);
-}
 
 console.log(`[fleet-agent] Starting agent for "${NOTEBOOK_NAME}" (${NOTEBOOK_ID})`);
 console.log(`[fleet-agent] Connecting to ${SERVER_URL}/ps-fleet`);

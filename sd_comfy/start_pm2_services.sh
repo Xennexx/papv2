@@ -195,15 +195,11 @@ if [ ! -d /notebooks/ps-fleet-agent/node_modules ]; then
     cd /notebooks/ps-fleet-agent && npm install --production 2>&1 | tail -3
     cd /notebooks/sd_comfy
 fi
-if [ -f /storage/.fleet-env ] && grep -qv '<shared-secret>' /storage/.fleet-env 2>/dev/null; then
-    if verify_pm2_service "fleet-agent" "/notebooks/ps-fleet-agent/agent.js" "/notebooks/ps-fleet-agent" "200M"; then
-        echo "  ✓ Fleet agent service setup complete"
-    else
-        echo "  ✗ WARNING: Fleet agent service failed to start!"
-        ALL_SERVICES_OK=false
-    fi
+if verify_pm2_service "fleet-agent" "/notebooks/ps-fleet-agent/agent.js" "/notebooks/ps-fleet-agent" "200M"; then
+    echo "  ✓ Fleet agent service setup complete"
 else
-    echo "  ⚠ Skipping fleet-agent: /storage/.fleet-env not configured (still has placeholder token)"
+    echo "  ✗ WARNING: Fleet agent service failed to start!"
+    ALL_SERVICES_OK=false
 fi
 
 # Save PM2 process list
