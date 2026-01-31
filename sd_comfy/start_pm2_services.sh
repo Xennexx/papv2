@@ -217,8 +217,14 @@ fi
 # Fleet agent service
 echo ""
 echo "3. Fleet agent service:"
-# Install dependencies on first boot
-if [ ! -d /notebooks/ps-fleet-agent/node_modules ]; then
+# Pull latest code from GitHub on every boot
+if [ -d /notebooks/.git ]; then
+    echo "  Pulling latest code from GitHub..."
+    cd /notebooks && git pull origin master 2>&1 | tail -3
+    cd /notebooks/sd_comfy
+fi
+# Install dependencies if missing or package.json changed
+if [ ! -d /notebooks/ps-fleet-agent/node_modules ] || [ /notebooks/ps-fleet-agent/package.json -nt /notebooks/ps-fleet-agent/node_modules/.package-lock.json ]; then
     echo "  Installing fleet-agent dependencies..."
     cd /notebooks/ps-fleet-agent && npm install --production 2>&1 | tail -3
     cd /notebooks/sd_comfy
