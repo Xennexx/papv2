@@ -14,7 +14,7 @@ const NOTEBOOK_ID = process.env.PAPERSPACE_NOTEBOOK_ID || os.hostname();
 const PAPERSPACE_FQDN = process.env.PAPERSPACE_FQDN || '';
 
 console.log(`[fleet-agent] Starting agent for "${NOTEBOOK_NAME}" (${NOTEBOOK_ID})`);
-console.log(`[fleet-agent] Connecting to ${SERVER_URL}/ps-fleet`);
+console.log(`[fleet-agent] Connecting to ${SERVER_URL}/ps-fleet-ns`);
 
 // Active PTY sessions: terminalId -> pty process
 const terminals = new Map();
@@ -68,7 +68,7 @@ function getSystemStats() {
 }
 
 // Connect with auto-reconnect
-const socket = io(`${SERVER_URL}/ps-fleet`, {
+const socket = io(`${SERVER_URL}/ps-fleet-ns`, {
   auth: { token: AUTH_TOKEN, notebookId: NOTEBOOK_ID, notebookName: NOTEBOOK_NAME, fqdn: PAPERSPACE_FQDN },
   reconnection: true,
   reconnectionDelay: 1000,
