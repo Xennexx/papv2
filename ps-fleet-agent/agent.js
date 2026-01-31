@@ -100,16 +100,18 @@ function inventoryChanged(a, b) {
 
 function emitInventory() {
   if (currentInventory && socket.connected) {
+    console.log(`[inventory] Emitting inventory:report (${currentInventory.totalFiles} files, ${(currentInventory.totalSize / 1e9).toFixed(2)} GB)`);
     socket.emit('inventory:report', currentInventory);
+  } else {
+    console.log(`[inventory] Cannot emit: inventory=${!!currentInventory}, connected=${socket.connected}`);
   }
 }
 
 async function doScanAndReport() {
   try {
     const inv = await scanInventory();
-    const changed = inventoryChanged(currentInventory, inv);
     currentInventory = inv;
-    if (changed) emitInventory();
+    emitInventory();
   } catch (err) {
     console.error('[inventory] Scan error:', err.message);
   }
