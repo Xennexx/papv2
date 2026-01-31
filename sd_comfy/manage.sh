@@ -14,6 +14,7 @@ declare -A INSTANCES=(
     ["2"]="7100:/com2/:sd_comfy2"
     ["3"]="7101:/com3/:sd_comfy3"
     ["4"]="7102:/com4/:sd_comfy4"
+    ["5"]="7103:/com5/:sd_comfy5"
 )
 
 usage() {
@@ -58,47 +59,16 @@ setup_environment() {
 
         pip install --upgrade pip
         pip install --upgrade wheel setuptools
-
+        
         cd $REPO_DIR
         pip install xformers
-
-        # Install requirements.txt (this will install torch, torchvision, torchaudio)
+        pip install torchvision torchaudio --no-deps
         pip install -r requirements.txt
-
         # Install additional dependencies that custom nodes require
         pip install opencv-python scikit-image piexif segment-anything
         # Install ComfyUI Manager and other custom node dependencies
-        pip install GitPython toml rich uv matplotlib ultralytics lpips simpleeval
-
-        # === VERSION CHECK AND FIX ===
-        # Must happen AFTER all pip installs, as some packages (like ultralytics) can downgrade torch
-        echo "=== Checking PyTorch/torchaudio version compatibility ==="
-        TORCH_VERSION=$(python -c "import torch; print(torch.__version__)")
-        TORCHAUDIO_VERSION=$(pip show torchaudio | grep "^Version:" | cut -d' ' -f2)
-        echo "Detected torch version: $TORCH_VERSION"
-        echo "Detected torchaudio version: $TORCHAUDIO_VERSION"
-
-        TORCH_BASE=$(echo "$TORCH_VERSION" | cut -d'+' -f1)
-        TORCHAUDIO_BASE=$(echo "$TORCHAUDIO_VERSION" | cut -d'+' -f1)
-
-        if [[ "$TORCH_BASE" != "$TORCHAUDIO_BASE" ]]; then
-            echo "WARNING: Version mismatch detected! torch=$TORCH_VERSION, torchaudio=$TORCHAUDIO_VERSION"
-            echo "Reinstalling torchaudio to match torch version..."
-            pip install --force-reinstall --no-deps \
-                torchaudio==${TORCH_VERSION} \
-                --index-url https://download.pytorch.org/whl/cu128 || {
-                echo "ERROR: Failed to reinstall torchaudio from cu128 index"
-                echo "Trying without CUDA suffix..."
-                pip install --force-reinstall --no-deps torchaudio==${TORCH_BASE}
-            }
-        else
-            echo "Versions match: torch=$TORCH_VERSION, torchaudio=$TORCHAUDIO_VERSION"
-        fi
-
-        # Verify the final versions
-        echo "=== Final PyTorch package versions ==="
-        python -c "import torch; import torchaudio; print('torch:', torch.__version__); print('torchaudio:', torchaudio.__version__); print('CUDA:', torch.cuda.is_available())"
-
+        pip install GitPython toml rich uv matplotlib ultralytics lpips
+        
         touch /tmp/sd_comfy.prepared
     else
         source $VENV_DIR/sd_comfy-env/bin/activate

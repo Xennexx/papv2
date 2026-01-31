@@ -41,6 +41,10 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
 
     # Install requirements.txt (this will install torch, torchvision, torchaudio)
     pip install -r requirements.txt
+    # Install additional dependencies that custom nodes require
+    pip install opencv-python scikit-image piexif segment-anything
+    # Install ComfyUI Manager and other custom node dependencies
+    pip install GitPython toml rich uv matplotlib ultralytics lpips
 
     # Install additional dependencies that custom nodes require
     pip install opencv-python scikit-image piexif segment-anything

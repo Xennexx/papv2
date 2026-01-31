@@ -119,6 +119,34 @@ verify_pm2_service() {
     return 1
 }
 
+# Inject nginx config for file-transfer proxy if not already present
+NGINX_SITE="/etc/nginx/sites-enabled/default"
+if [ -f "$NGINX_SITE" ] && ! grep -q "file-transfer" "$NGINX_SITE" 2>/dev/null; then
+    echo "Injecting /file-transfer/ nginx proxy config..."
+    # Insert the file-transfer location block before the final closing brace of the server block
+    sed -i '$ i\
+\
+    # P2P file transfer proxy for fleet agent\
+    location /file-transfer/ {\
+        proxy_pass http://localhost:7200/transfer/;\
+        proxy_buffering off;\
+        proxy_read_timeout 3600s;\
+        proxy_send_timeout 3600s;\
+    }' "$NGINX_SITE"
+    # Test and reload nginx
+    if nginx -t 2>&1; then
+        nginx -s reload 2>&1 && echo "Nginx reloaded with file-transfer proxy"
+    else
+        echo "Warning: nginx config test failed after injection"
+    fi
+else
+    if [ -f "$NGINX_SITE" ]; then
+        echo "Nginx file-transfer proxy already configured"
+    else
+        echo "Warning: $NGINX_SITE not found, skipping nginx injection"
+    fi
+fi
+
 # Change to ComfyUI directory
 cd /notebooks/sd_comfy
 

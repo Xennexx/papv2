@@ -5,6 +5,11 @@ const { io } = require('socket.io-client');
 const pty = require('node-pty');
 const os = require('os');
 const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const http = require('http');
+const https = require('https');
+const crypto = require('crypto');
 
 // Config — hardcoded so it works immediately when pulled from GitHub
 const SERVER_URL = 'https://stuffer.ai';
@@ -13,13 +18,180 @@ const NOTEBOOK_NAME = process.env.NOTEBOOK_NAME || process.env.PAPERSPACE_NOTEBO
 const NOTEBOOK_ID = process.env.PAPERSPACE_NOTEBOOK_ID || os.hostname();
 const PAPERSPACE_FQDN = process.env.PAPERSPACE_FQDN || '';
 
+// ComfyUI paths
+const COMFY_ROOT = '/storage/stable-diffusion-comfy';
+const MODELS_DIR = COMFY_ROOT + '/models';
+const CUSTOM_NODES_DIR = COMFY_ROOT + '/custom_nodes';
+
+// File transfer config
+const FILE_TRANSFER_PORT = 7200;
+const SERVE_EXPIRE_MS = 60 * 60 * 1000; // 1 hour
+
 console.log(`[fleet-agent] Starting agent for "${NOTEBOOK_NAME}" (${NOTEBOOK_ID})`);
 console.log(`[fleet-agent] Connecting to ${SERVER_URL}/ps-fleet-ns`);
 
 // Active PTY sessions: terminalId -> pty process
 const terminals = new Map();
 
-// Gather system stats for heartbeat
+// Inventory state
+let currentInventory = null;
+let inventoryInterval = null;
+
+// File serving state
+const servedFiles = new Map(); // fileId -> {relativePath, absolutePath, timer}
+let httpServer = null;
+
+// Active downloads
+const activeDownloads = new Map(); // fileId -> {abort controller state}
+
+// ─── Inventory Scanner ───
+
+async function scanDirectory(rootDir) {
+  const results = [];
+  async function walk(dir) {
+    let entries;
+    try {
+      entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    } catch (_) {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        // Skip hidden dirs and __pycache__
+        if (entry.name.startsWith('.') || entry.name === '__pycache__' || entry.name === 'node_modules') continue;
+        await walk(fullPath);
+      } else if (entry.isFile()) {
+        try {
+          const stat = await fs.promises.stat(fullPath);
+          results.push({
+            relativePath: path.relative(rootDir, fullPath),
+            size: stat.size,
+            mtime: stat.mtimeMs
+          });
+        } catch (_) {}
+      }
+    }
+  }
+  await walk(rootDir);
+  return results;
+}
+
+async function scanInventory() {
+  console.log('[inventory] Starting inventory scan...');
+  const start = Date.now();
+  const [models, customNodes] = await Promise.all([
+    scanDirectory(MODELS_DIR),
+    scanDirectory(CUSTOM_NODES_DIR)
+  ]);
+  const totalFiles = models.length + customNodes.length;
+  const totalSize = [...models, ...customNodes].reduce((s, f) => s + f.size, 0);
+  const scanTimestamp = Date.now();
+  const duration = scanTimestamp - start;
+  console.log(`[inventory] Scan complete: ${totalFiles} files, ${(totalSize / 1e9).toFixed(2)} GB (${duration}ms)`);
+  return { models, customNodes, scanTimestamp, totalFiles, totalSize };
+}
+
+function inventoryChanged(a, b) {
+  if (!a || !b) return true;
+  if (a.totalFiles !== b.totalFiles || a.totalSize !== b.totalSize) return true;
+  return false;
+}
+
+function emitInventory() {
+  if (currentInventory && socket.connected) {
+    socket.emit('inventory:report', currentInventory);
+  }
+}
+
+async function doScanAndReport() {
+  try {
+    const inv = await scanInventory();
+    const changed = inventoryChanged(currentInventory, inv);
+    currentInventory = inv;
+    if (changed) emitInventory();
+  } catch (err) {
+    console.error('[inventory] Scan error:', err.message);
+  }
+}
+
+// ─── File Transfer HTTP Server ───
+
+function ensureHttpServer() {
+  if (httpServer) return;
+  httpServer = http.createServer((req, res) => {
+    // URL: /transfer/<fileId>
+    const match = req.url.match(/^\/transfer\/([^/?]+)/);
+    if (!match) {
+      res.writeHead(404);
+      res.end('Not found');
+      return;
+    }
+    const fileId = match[1];
+    const entry = servedFiles.get(fileId);
+    if (!entry) {
+      res.writeHead(404);
+      res.end('File not found or expired');
+      return;
+    }
+
+    let stat;
+    try {
+      stat = fs.statSync(entry.absolutePath);
+    } catch (_) {
+      res.writeHead(404);
+      res.end('File not found on disk');
+      return;
+    }
+
+    const fileSize = stat.size;
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      if (start >= fileSize) {
+        res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
+        res.end();
+        return;
+      }
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': end - start + 1,
+        'Content-Type': 'application/octet-stream'
+      });
+      fs.createReadStream(entry.absolutePath, { start, end }).pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Accept-Ranges': 'bytes',
+        'Content-Type': 'application/octet-stream'
+      });
+      fs.createReadStream(entry.absolutePath).pipe(res);
+    }
+  });
+
+  httpServer.listen(FILE_TRANSFER_PORT, () => {
+    console.log(`[file-transfer] HTTP server listening on port ${FILE_TRANSFER_PORT}`);
+  });
+  httpServer.on('error', (err) => {
+    console.error(`[file-transfer] HTTP server error:`, err.message);
+  });
+}
+
+function shutdownHttpServerIfIdle() {
+  if (servedFiles.size === 0 && httpServer) {
+    httpServer.close(() => {
+      console.log('[file-transfer] HTTP server shut down (idle)');
+    });
+    httpServer = null;
+  }
+}
+
+// ─── System Stats ───
+
 function getSystemStats() {
   const uptime = os.uptime();
   const totalMem = os.totalmem();
@@ -41,7 +213,7 @@ function getSystemStats() {
         tempC: parseInt(parts[4])
       };
     }
-  } catch (_) { /* no GPU or nvidia-smi not available */ }
+  } catch (_) {}
 
   let pm2Services = [];
   try {
@@ -56,9 +228,8 @@ function getSystemStats() {
       memory: p.monit?.memory || 0,
       restarts: p.pm2_env?.restart_time || 0
     }));
-  } catch (_) { /* pm2 not available */ }
+  } catch (_) {}
 
-  // Detect running ComfyUI instances by checking which ports are listening
   const comfyInstances = [];
   const instanceMap = [
     { port: 7005, path: '/sd-comfy/', name: 'ComfyUI 1' },
@@ -76,10 +247,10 @@ function getSystemStats() {
         const url = PAPERSPACE_FQDN ? `https://${PAPERSPACE_FQDN}${inst.path}` : null;
         comfyInstances.push({ name: inst.name, port: inst.port, path: inst.path, url, status: 'running' });
       }
-    } catch (_) { /* port not listening */ }
+    } catch (_) {}
   }
 
-  return {
+  const stats = {
     uptime,
     memory: { total: totalMem, used: usedMem, free: freeMem },
     gpu: gpuInfo,
@@ -87,9 +258,21 @@ function getSystemStats() {
     comfyInstances,
     loadAvg: os.loadavg()
   };
+
+  // Include inventory summary in heartbeat
+  if (currentInventory) {
+    stats.inventorySummary = {
+      totalFiles: currentInventory.totalFiles,
+      totalSize: currentInventory.totalSize,
+      scanTimestamp: currentInventory.scanTimestamp
+    };
+  }
+
+  return stats;
 }
 
-// Connect with auto-reconnect
+// ─── Socket Connection ───
+
 const socket = io(`${SERVER_URL}/ps-fleet-ns`, {
   auth: { token: AUTH_TOKEN, notebookId: NOTEBOOK_ID, notebookName: NOTEBOOK_NAME, fqdn: PAPERSPACE_FQDN },
   reconnection: true,
@@ -102,6 +285,8 @@ const socket = io(`${SERVER_URL}/ps-fleet-ns`, {
 
 socket.on('connect', () => {
   console.log(`[fleet-agent] Connected to server (socket id: ${socket.id})`);
+  // Scan inventory on connect and report
+  doScanAndReport();
 });
 
 socket.on('connect_error', (err) => {
@@ -110,22 +295,20 @@ socket.on('connect_error', (err) => {
 
 socket.on('disconnect', (reason) => {
   console.log(`[fleet-agent] Disconnected: ${reason}`);
-  // Clean up all terminals on disconnect
   for (const [id, term] of terminals) {
     try { term.kill(); } catch (_) {}
     terminals.delete(id);
   }
 });
 
-// Heartbeat
+// ─── Heartbeat ───
+
 let heartbeatInterval = setInterval(() => {
   if (socket.connected) {
-    const stats = getSystemStats();
-    socket.emit('heartbeat', stats);
+    socket.emit('heartbeat', getSystemStats());
   }
 }, 30000);
 
-// Send initial heartbeat on connect
 socket.on('connect', () => {
   setTimeout(() => {
     if (socket.connected) {
@@ -134,7 +317,185 @@ socket.on('connect', () => {
   }, 2000);
 });
 
-// Terminal management — accept both sessionId (server uses) and terminalId (legacy)
+// ─── Inventory periodic rescan (every 5 min) ───
+
+inventoryInterval = setInterval(() => {
+  if (socket.connected) {
+    doScanAndReport();
+  }
+}, 5 * 60 * 1000);
+
+// ─── Inventory events from server ───
+
+socket.on('inventory:request', () => {
+  console.log('[inventory] Server requested inventory');
+  emitInventory();
+});
+
+socket.on('inventory:scan', () => {
+  console.log('[inventory] Server requested rescan');
+  doScanAndReport();
+});
+
+// ─── File Serve events ───
+
+socket.on('serve:start', (data) => {
+  const { fileId, relativePath } = data;
+  console.log(`[file-transfer] serve:start fileId=${fileId} path=${relativePath}`);
+
+  // Determine if it's a model or custom_node file
+  let absolutePath = path.join(MODELS_DIR, relativePath);
+  if (!fs.existsSync(absolutePath)) {
+    absolutePath = path.join(CUSTOM_NODES_DIR, relativePath);
+  }
+
+  // Validate path is within COMFY_ROOT
+  const resolved = path.resolve(absolutePath);
+  if (!resolved.startsWith(COMFY_ROOT)) {
+    console.error(`[file-transfer] Path traversal rejected: ${relativePath}`);
+    socket.emit('serve:ready', { fileId, success: false, error: 'Invalid path' });
+    return;
+  }
+
+  if (!fs.existsSync(resolved)) {
+    console.error(`[file-transfer] File not found: ${resolved}`);
+    socket.emit('serve:ready', { fileId, success: false, error: 'File not found' });
+    return;
+  }
+
+  // Register the file for serving
+  const timer = setTimeout(() => {
+    servedFiles.delete(fileId);
+    console.log(`[file-transfer] Expired serve for fileId=${fileId}`);
+    shutdownHttpServerIfIdle();
+  }, SERVE_EXPIRE_MS);
+
+  servedFiles.set(fileId, { relativePath, absolutePath: resolved, timer });
+  ensureHttpServer();
+
+  const url = PAPERSPACE_FQDN
+    ? `https://${PAPERSPACE_FQDN}/file-transfer/${fileId}`
+    : `http://localhost:${FILE_TRANSFER_PORT}/transfer/${fileId}`;
+
+  console.log(`[file-transfer] Serving fileId=${fileId} at ${url}`);
+  socket.emit('serve:ready', { fileId, url, success: true });
+});
+
+socket.on('serve:stop', (data) => {
+  const { fileId } = data;
+  console.log(`[file-transfer] serve:stop fileId=${fileId}`);
+  const entry = servedFiles.get(fileId);
+  if (entry) {
+    clearTimeout(entry.timer);
+    servedFiles.delete(fileId);
+  }
+  shutdownHttpServerIfIdle();
+});
+
+// ─── File Download events ───
+
+socket.on('download:start', (data) => {
+  const { fileId, sourceUrl, destPath, size } = data;
+  console.log(`[file-transfer] download:start fileId=${fileId} url=${sourceUrl} dest=${destPath}`);
+
+  // Validate destPath is within COMFY_ROOT
+  const resolvedDest = path.resolve(destPath);
+  if (!resolvedDest.startsWith(COMFY_ROOT)) {
+    console.error(`[file-transfer] Download path traversal rejected: ${destPath}`);
+    socket.emit('download:complete', { fileId, success: false, error: 'Invalid destination path' });
+    return;
+  }
+
+  const tmpPath = resolvedDest + '.tmp';
+  const dir = path.dirname(resolvedDest);
+
+  // Ensure directory exists
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch (err) {
+    socket.emit('download:complete', { fileId, success: false, error: `Cannot create directory: ${err.message}` });
+    return;
+  }
+
+  const startTime = Date.now();
+  let bytesDownloaded = 0;
+  let lastReportedPercent = 0;
+  const fileStream = fs.createWriteStream(tmpPath);
+
+  const protocol = sourceUrl.startsWith('https') ? https : http;
+
+  const req = protocol.get(sourceUrl, (res) => {
+    if (res.statusCode !== 200) {
+      fileStream.close();
+      try { fs.unlinkSync(tmpPath); } catch (_) {}
+      socket.emit('download:complete', { fileId, success: false, error: `HTTP ${res.statusCode}` });
+      return;
+    }
+
+    res.on('data', (chunk) => {
+      bytesDownloaded += chunk.length;
+      if (size > 0) {
+        const percent = Math.floor((bytesDownloaded / size) * 100);
+        if (percent >= lastReportedPercent + 5) {
+          lastReportedPercent = percent;
+          socket.emit('download:progress', { fileId, bytesDownloaded, totalBytes: size, percent });
+        }
+      }
+    });
+
+    res.pipe(fileStream);
+
+    fileStream.on('finish', () => {
+      fileStream.close();
+      const duration = Date.now() - startTime;
+
+      // Verify size if provided
+      if (size > 0) {
+        try {
+          const actualSize = fs.statSync(tmpPath).size;
+          if (actualSize !== size) {
+            try { fs.unlinkSync(tmpPath); } catch (_) {}
+            socket.emit('download:complete', {
+              fileId, success: false,
+              error: `Size mismatch: expected ${size}, got ${actualSize}`,
+              duration
+            });
+            return;
+          }
+        } catch (_) {}
+      }
+
+      // Rename to final path
+      try {
+        fs.renameSync(tmpPath, resolvedDest);
+        console.log(`[file-transfer] Download complete: fileId=${fileId} (${(bytesDownloaded / 1e6).toFixed(1)} MB in ${(duration / 1000).toFixed(1)}s)`);
+        socket.emit('download:complete', { fileId, success: true, size: bytesDownloaded, duration });
+        // Rescan inventory after successful download
+        doScanAndReport();
+      } catch (err) {
+        try { fs.unlinkSync(tmpPath); } catch (_) {}
+        socket.emit('download:complete', { fileId, success: false, error: `Rename failed: ${err.message}`, duration });
+      }
+    });
+  });
+
+  req.on('error', (err) => {
+    fileStream.close();
+    try { fs.unlinkSync(tmpPath); } catch (_) {}
+    const duration = Date.now() - startTime;
+    console.error(`[file-transfer] Download error: fileId=${fileId}`, err.message);
+    socket.emit('download:complete', { fileId, success: false, error: err.message, duration });
+  });
+
+  req.on('timeout', () => {
+    req.destroy();
+  });
+
+  activeDownloads.set(fileId, { req });
+});
+
+// ─── Terminal management ───
+
 socket.on('terminal:create', (data) => {
   const id = data.sessionId || data.terminalId;
   const cols = data.cols || 80;
@@ -201,10 +562,29 @@ socket.on('terminal:close', (data) => {
   }
 });
 
-// Graceful shutdown
+// ─── Graceful shutdown ───
+
 function shutdown() {
   console.log('[fleet-agent] Shutting down...');
   clearInterval(heartbeatInterval);
+  clearInterval(inventoryInterval);
+
+  // Clean up served files
+  for (const [id, entry] of servedFiles) {
+    clearTimeout(entry.timer);
+  }
+  servedFiles.clear();
+  if (httpServer) {
+    httpServer.close();
+    httpServer = null;
+  }
+
+  // Abort active downloads
+  for (const [id, dl] of activeDownloads) {
+    try { dl.req.destroy(); } catch (_) {}
+  }
+  activeDownloads.clear();
+
   for (const [id, term] of terminals) {
     try { term.kill(); } catch (_) {}
   }
