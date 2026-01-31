@@ -346,10 +346,15 @@ socket.on('serve:start', (data) => {
   console.log(`[file-transfer] serve:start fileId=${fileId} path=${relativePath}`);
 
   // Determine if it's a model or custom_node file
+  // Try models dir first, then custom_nodes, then custom_nodes with prefix stripped
   let absolutePath = path.join(MODELS_DIR, relativePath);
   if (!fs.existsSync(absolutePath)) {
     absolutePath = path.join(CUSTOM_NODES_DIR, relativePath);
   }
+  if (!fs.existsSync(absolutePath) && relativePath.startsWith('custom_nodes/')) {
+    absolutePath = path.join(CUSTOM_NODES_DIR, relativePath.slice('custom_nodes/'.length));
+  }
+  console.log(`[file-transfer] Resolved serve path: ${absolutePath}`);
 
   // Validate path is within COMFY_ROOT
   const resolved = path.resolve(absolutePath);
@@ -397,16 +402,33 @@ socket.on('serve:stop', (data) => {
 // ─── File Download events ───
 
 socket.on('download:start', (data) => {
-  const { fileId, sourceUrl, destPath, size } = data;
-  console.log(`[file-transfer] download:start fileId=${fileId} url=${sourceUrl} dest=${destPath}`);
+  const { fileId, sourceUrl, destPath, size, category } = data;
+  console.log(`[file-transfer] download:start fileId=${fileId} url=${sourceUrl} dest=${destPath} category=${category}`);
 
-  // Validate destPath is within COMFY_ROOT
-  const resolvedDest = path.resolve(destPath);
+  // Resolve destPath: if absolute and within COMFY_ROOT use as-is,
+  // otherwise treat as relative to models/ or custom_nodes/
+  let resolvedDest;
+  if (path.isAbsolute(destPath) && destPath.startsWith(COMFY_ROOT)) {
+    resolvedDest = path.resolve(destPath);
+  } else {
+    // Determine base dir from category or path prefix
+    const isCustomNode = category === 'custom_nodes' || destPath.startsWith('custom_nodes/');
+    const baseDir = isCustomNode ? CUSTOM_NODES_DIR : MODELS_DIR;
+    // Strip leading category prefix if it matches the base (e.g. "custom_nodes/foo" when baseDir is already custom_nodes)
+    const cleanPath = isCustomNode && destPath.startsWith('custom_nodes/')
+      ? destPath.slice('custom_nodes/'.length)
+      : destPath;
+    resolvedDest = path.resolve(baseDir, cleanPath);
+  }
+
+  // Validate resolved path is within COMFY_ROOT
   if (!resolvedDest.startsWith(COMFY_ROOT)) {
-    console.error(`[file-transfer] Download path traversal rejected: ${destPath}`);
+    console.error(`[file-transfer] Download path traversal rejected: ${destPath} -> ${resolvedDest}`);
     socket.emit('download:complete', { fileId, success: false, error: 'Invalid destination path' });
     return;
   }
+
+  console.log(`[file-transfer] Resolved destination: ${resolvedDest}`);
 
   const tmpPath = resolvedDest + '.tmp';
   const dir = path.dirname(resolvedDest);
