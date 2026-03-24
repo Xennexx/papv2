@@ -61,9 +61,9 @@ setup_environment() {
         pip install --upgrade wheel setuptools
         
         cd $REPO_DIR
-        pip install xformers
-        pip install torchvision torchaudio --no-deps
-        pip install -r requirements.txt
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+        pip install xformers --index-url https://download.pytorch.org/whl/cu124
+        pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu124
         # Install additional dependencies that custom nodes require
         pip install opencv-python scikit-image piexif segment-anything
         # Install ComfyUI Manager and other custom node dependencies

@@ -37,10 +37,11 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
     pip install --upgrade wheel setuptools
     
     cd $REPO_DIR
-    pip install xformers
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+    pip install xformers --index-url https://download.pytorch.org/whl/cu124
 
     # Install requirements.txt (this will install torch, torchvision, torchaudio)
-    pip install -r requirements.txt
+    pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu124
     # Install additional dependencies that custom nodes require
     pip install opencv-python scikit-image piexif segment-anything
     # Install ComfyUI Manager and other custom node dependencies
