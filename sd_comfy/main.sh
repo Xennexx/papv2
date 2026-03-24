@@ -11,6 +11,18 @@ trap 'error_exit "### ERROR ###"' ERR
 
 echo "### Setting up Stable Diffusion Comfy ###"
 log "Setting up Stable Diffusion Comfy"
+
+# Force reinstall if torch has wrong CUDA version for this driver
+if [[ -f "/tmp/sd_comfy.prepared" ]] && [[ -f "$VENV_DIR/sd_comfy-env/bin/activate" ]]; then
+    source $VENV_DIR/sd_comfy-env/bin/activate
+    TORCH_CUDA=$( python -c "import torch; print(torch.version.cuda or '')" 2>/dev/null || echo "")
+    deactivate 2>/dev/null || true
+    if [[ "$TORCH_CUDA" != 12.4* ]]; then
+        echo "WARNING: Installed torch uses CUDA $TORCH_CUDA but driver supports 12.4 — forcing reinstall"
+        rm -f /tmp/sd_comfy.prepared
+    fi
+fi
+
 if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
 
     
@@ -40,8 +52,8 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
     pip install xformers --index-url https://download.pytorch.org/whl/cu124
 
-    # Install requirements.txt (this will install torch, torchvision, torchaudio)
-    pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu124
+    # Install requirements.txt — use cu124 as primary index so pip doesn't pull cu130 from PyPI
+    pip install -r requirements.txt --index-url https://download.pytorch.org/whl/cu124 --extra-index-url https://pypi.org/simple
     # Install additional dependencies that custom nodes require
     pip install opencv-python scikit-image piexif segment-anything
     # Install ComfyUI Manager and other custom node dependencies
@@ -72,8 +84,8 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
         # Reinstall torchaudio from PyTorch CUDA index to match torch
         pip install --force-reinstall --no-deps \
             torchaudio==${TORCH_VERSION} \
-            --index-url https://download.pytorch.org/whl/cu128 || {
-            echo "ERROR: Failed to reinstall torchaudio from cu128 index"
+            --index-url https://download.pytorch.org/whl/cu124 || {
+            echo "ERROR: Failed to reinstall torchaudio from cu124 index"
             echo "Trying without CUDA suffix..."
             pip install --force-reinstall --no-deps torchaudio==${TORCH_BASE}
         }

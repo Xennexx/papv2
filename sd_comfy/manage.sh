@@ -63,7 +63,7 @@ setup_environment() {
         cd $REPO_DIR
         pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
         pip install xformers --index-url https://download.pytorch.org/whl/cu124
-        pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu124
+        pip install -r requirements.txt --index-url https://download.pytorch.org/whl/cu124 --extra-index-url https://pypi.org/simple
         # Install additional dependencies that custom nodes require
         pip install opencv-python scikit-image piexif segment-anything
         # Install ComfyUI Manager and other custom node dependencies
