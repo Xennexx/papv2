@@ -68,7 +68,9 @@ setup_environment() {
         pip install opencv-python scikit-image piexif segment-anything
         # Install ComfyUI Manager and other custom node dependencies
         pip install GitPython toml rich uv matplotlib ultralytics lpips
-        
+        # Install SageAttention for ~25-30% faster attention computation on SDXL
+        pip install sageattention
+
         touch /tmp/sd_comfy.prepared
     else
         source $VENV_DIR/sd_comfy-env/bin/activate
@@ -105,7 +107,13 @@ start_instance() {
     source $VENV_DIR/sd_comfy-env/bin/activate
     cd "$REPO_DIR"
     
-    PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --port $port" > "$LOG_DIR/${name}.log" 2>&1 &
+    # Optimization flags: sage attention for ~25-30% speedup, --fast for fp16 accumulation/cublas/autotune
+    # Only add --use-sage-attention if the package is installed (avoid crash loop)
+    local extra_flags="${COMFYUI_EXTRA_FLAGS:-"--fast"}"
+    if python -c "from sageattention import sageattn" 2>/dev/null; then
+        extra_flags="$extra_flags --use-sage-attention"
+    fi
+    PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --port $port $extra_flags" > "$LOG_DIR/${name}.log" 2>&1 &
     echo $! > "$pidfile"
     
     echo "Started ComfyUI instance $instance (PID: $!, port $port)"

@@ -64,6 +64,8 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
     # Install ComfyUI Manager and other custom node dependencies
     # NOTE: ultralytics requires torch<2.10 which can downgrade torch and cause mismatch!
     pip install GitPython toml rich uv matplotlib ultralytics lpips simpleeval
+    # Install SageAttention for ~25-30% faster attention computation on SDXL
+    pip install sageattention
 
     # === VERSION CHECK AND FIX ===
     # Must happen AFTER all pip installs, as some packages (like ultralytics) can downgrade torch
@@ -116,7 +118,9 @@ if [[ -z "$INSTALL_ONLY" ]]; then
   
   
   cd "$REPO_DIR"
-  PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --port 7005" > $LOG_DIR/sd_comfy.log 2>&1 &
+  SAGE_FLAG=""
+  python -c "from sageattention import sageattn" 2>/dev/null && SAGE_FLAG="--use-sage-attention"
+  PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --fast $SAGE_FLAG --port 7005" > $LOG_DIR/sd_comfy.log 2>&1 &
   echo $! > /tmp/sd_comfy.pid
 fi
 

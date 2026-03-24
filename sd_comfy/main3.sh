@@ -37,7 +37,9 @@ if [[ -z "$INSTALL_ONLY" ]]; then
   echo "### Starting Stable Diffusion Comfy ###"
   log "Starting Stable Diffusion Comfy"
   cd "$REPO_DIR"
-  PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --port 7101" > $LOG_DIR/sd_comfy3.log 2>&1 &
+  SAGE_FLAG=""
+  python -c "from sageattention import sageattn" 2>/dev/null && SAGE_FLAG="--use-sage-attention"
+  PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --fast $SAGE_FLAG --port 7101" > $LOG_DIR/sd_comfy3.log 2>&1 &
   echo $! > /tmp/sd_comfy.pid
 fi
 
