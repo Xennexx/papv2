@@ -65,9 +65,10 @@ if [[ ! -d $WORKING_DIR/image_outputs ]]; then
 fi
 apt install htop
 # Pull latest code from GitHub BEFORE starting instances
+# Force-reset local changes first (file permissions change at boot, blocking pull)
 if [ -d /notebooks/.git ]; then
   echo "Pulling latest code from GitHub before starting ComfyUI..."
-  cd /notebooks && git pull origin master 2>&1 | tail -3
+  cd /notebooks && git checkout -- . 2>/dev/null; git pull origin master 2>&1 | tail -3
 fi
 
 bash /notebooks/sd_comfy/main.sh

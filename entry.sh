@@ -81,10 +81,10 @@ if [[ ! -d $WORKING_DIR/image_outputs ]]; then
 fi
 
 # Pull latest code from GitHub BEFORE starting instances
-# (start_pm2_services.sh also pulls but runs after instances start — too late)
+# Force-reset local changes first (file permissions change at boot, blocking pull)
 if [ -d /notebooks/.git ]; then
   echo "Pulling latest code from GitHub before starting ComfyUI..."
-  cd /notebooks && git pull origin master 2>&1 | tail -3
+  cd /notebooks && git checkout -- . 2>/dev/null; git pull origin master 2>&1 | tail -3
   cd $SCRIPT_ROOT_DIR
 fi
 
