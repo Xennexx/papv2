@@ -64,6 +64,12 @@ if [[ ! -d $WORKING_DIR/image_outputs ]]; then
   ln -s $IMAGE_OUTPUTS_DIR $WORKING_DIR/image_outputs
 fi
 apt install htop
+# Pull latest code from GitHub BEFORE starting instances
+if [ -d /notebooks/.git ]; then
+  echo "Pulling latest code from GitHub before starting ComfyUI..."
+  cd /notebooks && git pull origin master 2>&1 | tail -3
+fi
+
 bash /notebooks/sd_comfy/main.sh
 bash /notebooks/sd_comfy/main2.sh
 bash /notebooks/sd_comfy/main3.sh
