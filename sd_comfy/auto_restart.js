@@ -15,8 +15,7 @@ const LOG_FILE = '/tmp/comfyui_auto_restart.log';
 const INSTANCES = {
     1: { port: 7005, path: '/sd-comfy/' },
     2: { port: 7100, path: '/com2/' },
-    3: { port: 7101, path: '/com3/' },
-    4: { port: 7102, path: '/com4/' }
+    3: { port: 7101, path: '/com3/' }
 };
 
 // Get current hostname from environment

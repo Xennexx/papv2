@@ -83,7 +83,6 @@ fi
 bash /notebooks/sd_comfy/main.sh
 bash /notebooks/sd_comfy/main2.sh
 bash /notebooks/sd_comfy/main3.sh
-bash /notebooks/sd_comfy/main4.sh
 
 # Start background services with PM2 using robust startup script
 echo "Starting ComfyUI background services with PM2..."
