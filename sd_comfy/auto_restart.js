@@ -6,7 +6,7 @@ const https = require('https');
 const http = require('http');
 
 // Configuration
-const RESTART_INTERVAL = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+const RESTART_INTERVAL = 0; // Disabled — Paperspace restarts every 6h, and torch.compile caches are lost on restart
 const QUEUE_CHECK_INTERVAL = 30 * 1000; // Check queue every 30 seconds
 const QUEUE_THRESHOLD = 5; // Restart if queue_remaining > 5
 const LOG_FILE = '/tmp/comfyui_auto_restart.log';
@@ -225,20 +225,22 @@ log('ComfyUI auto-restart service started');
 log(`Will restart all instances every ${RESTART_INTERVAL / 1000 / 60} minutes`);
 log(`Will check queues every ${QUEUE_CHECK_INTERVAL / 1000} seconds (threshold: ${QUEUE_THRESHOLD})`);
 
-// Initial wait before first restart
-log(`Waiting ${RESTART_INTERVAL / 1000 / 60} minutes until first restart...`);
-
-// Set up queue monitoring
+// Set up queue monitoring (restarts stuck instances with deep queues)
 log('Starting queue monitoring...');
 setInterval(async () => {
     await checkAllQueues();
 }, QUEUE_CHECK_INTERVAL);
 
-// Set up the scheduled restart interval
-setInterval(async () => {
-    await restartAllInstances();
-    log(`Waiting ${RESTART_INTERVAL / 1000 / 60} minutes until next restart...`);
-}, RESTART_INTERVAL);
+// Set up the scheduled restart interval (if enabled)
+if (RESTART_INTERVAL > 0) {
+    log(`Will restart all instances every ${RESTART_INTERVAL / 1000 / 60} minutes`);
+    setInterval(async () => {
+        await restartAllInstances();
+        log(`Waiting ${RESTART_INTERVAL / 1000 / 60} minutes until next restart...`);
+    }, RESTART_INTERVAL);
+} else {
+    log('Scheduled restarts disabled (relying on Paperspace 6h restart cycle)');
+}
 
 // Handle graceful shutdown
 process.on('SIGTERM', () => {
