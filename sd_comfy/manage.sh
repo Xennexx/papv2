@@ -106,7 +106,7 @@ start_instance() {
     
     # Optimization flags: --fast enables fp16 accumulation, cublas ops, autotune, pinned memory
     # Set COMFYUI_EXTRA_FLAGS to override (e.g. COMFYUI_EXTRA_FLAGS="" to disable all extras)
-    local extra_flags="${COMFYUI_EXTRA_FLAGS:-"--fast"}"
+    local extra_flags="${COMFYUI_EXTRA_FLAGS:-"--fast --preview-method none"}"
     PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --port $port $extra_flags" > "$LOG_DIR/${name}.log" 2>&1 &
     echo $! > "$pidfile"
     

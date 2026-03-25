@@ -115,7 +115,7 @@ if [[ -z "$INSTALL_ONLY" ]]; then
   
   
   cd "$REPO_DIR"
-  PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --fast --port 7005" > $LOG_DIR/sd_comfy.log 2>&1 &
+  PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --fast --preview-method none --port 7005" > $LOG_DIR/sd_comfy.log 2>&1 &
   echo $! > /tmp/sd_comfy.pid
 fi
 

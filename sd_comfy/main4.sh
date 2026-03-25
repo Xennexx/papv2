@@ -37,7 +37,7 @@ if [[ -z "$INSTALL_ONLY" ]]; then
   echo "### Starting Stable Diffusion Comfy ###"
   log "Starting Stable Diffusion Comfy"
   cd "$REPO_DIR"
-  PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --fast --port 7102" > $LOG_DIR/sd_comfy4.log 2>&1 &
+  PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --fast --preview-method none --port 7102" > $LOG_DIR/sd_comfy4.log 2>&1 &
   echo $! > /tmp/sd_comfy.pid
 fi
 
