@@ -112,8 +112,13 @@ log "Finished Preparing Environment for Stable Diffusion Comfy"
 if [[ -z "$INSTALL_ONLY" ]]; then
   echo "### Starting Stable Diffusion Comfy ###"
   log "Starting Stable Diffusion Comfy"
-  
-  
+
+  # Ensure Comfy-WaveSpeed custom node is installed (provides FBCache for ~14% speedup)
+  if [[ ! -d "$REPO_DIR/custom_nodes/Comfy-WaveSpeed" ]]; then
+    echo "Installing Comfy-WaveSpeed custom node..."
+    git clone https://github.com/chengzeyi/Comfy-WaveSpeed.git "$REPO_DIR/custom_nodes/Comfy-WaveSpeed"
+  fi
+
   cd "$REPO_DIR"
   PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --fast --preview-method none --port 7005" > $LOG_DIR/sd_comfy.log 2>&1 &
   echo $! > /tmp/sd_comfy.pid

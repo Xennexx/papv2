@@ -100,6 +100,13 @@ start_instance() {
     
     echo "Starting ComfyUI instance $instance on port $port..."
     source $VENV_DIR/sd_comfy-env/bin/activate
+
+    # Ensure Comfy-WaveSpeed custom node is installed (provides FBCache)
+    if [[ ! -d "$REPO_DIR/custom_nodes/Comfy-WaveSpeed" ]]; then
+        echo "Installing Comfy-WaveSpeed custom node..."
+        git clone https://github.com/chengzeyi/Comfy-WaveSpeed.git "$REPO_DIR/custom_nodes/Comfy-WaveSpeed"
+    fi
+
     cd "$REPO_DIR"
     
     # Optimization flags: --fast enables fp16 accumulation, cublas ops, autotune, pinned memory
