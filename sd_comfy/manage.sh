@@ -13,6 +13,7 @@ declare -A INSTANCES=(
     ["1"]="7005:/sd-comfy/:sd_comfy"
     ["2"]="7100:/com2/:sd_comfy2"
     ["3"]="7101:/com3/:sd_comfy3"
+    ["4"]="7102:/com4/:sd_comfy4"
 )
 
 usage() {
@@ -25,7 +26,7 @@ usage() {
     echo "  status   - Show status of instance(s)"
     echo "  install  - Install/prepare environment only"
     echo ""
-    echo "Instance numbers: 1, 2, 3, or 'all'"
+    echo "Instance numbers: 1, 2, 3, 4, or 'all'"
     echo ""
     echo "Examples:"
     echo "  $0 start all      # Start all instances"
@@ -255,7 +256,7 @@ process_instances() {
     local instances=("$@")
     
     if [[ ${#instances[@]} -eq 0 || "${instances[0]}" == "all" ]]; then
-        instances=(1 2 3)
+        instances=(1 2 3 4)
     fi
     
     for instance in "${instances[@]}"; do

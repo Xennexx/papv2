@@ -236,7 +236,8 @@ function getSystemStats() {
   const instanceMap = [
     { port: 7005, path: '/sd-comfy/', name: 'ComfyUI 1' },
     { port: 7100, path: '/com2/', name: 'ComfyUI 2' },
-    { port: 7101, path: '/com3/', name: 'ComfyUI 3' }
+    { port: 7101, path: '/com3/', name: 'ComfyUI 3' },
+    { port: 7102, path: '/com4/', name: 'ComfyUI 4' }
   ];
   for (const inst of instanceMap) {
     try {
