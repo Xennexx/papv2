@@ -57,10 +57,10 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
     # Install additional dependencies that custom nodes require
     pip install opencv-python scikit-image piexif segment-anything
     # Install ComfyUI Manager and other custom node dependencies
-    # NOTE: ultralytics can downgrade torch — install with --no-deps then fix missing deps
     pip install GitPython toml rich uv matplotlib lpips simpleeval
+    # Install ultralytics deps first, then ultralytics with --no-deps to prevent torch downgrade
+    pip install requests polars scipy ultralytics-thop pandas psutil py-cpuinfo seaborn
     pip install ultralytics --no-deps
-    pip install pandas py-cpuinfo psutil 2>/dev/null || true
     # === VERSION CHECK AND FIX ===
     # Must happen AFTER all pip installs, as some packages (like ultralytics) can downgrade torch
     echo "=== Checking PyTorch/torchaudio version compatibility ==="
