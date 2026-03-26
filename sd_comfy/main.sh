@@ -17,8 +17,8 @@ if [[ -f "/tmp/sd_comfy.prepared" ]] && [[ -f "$VENV_DIR/sd_comfy-env/bin/activa
     source $VENV_DIR/sd_comfy-env/bin/activate
     TORCH_CUDA=$( python -c "import torch; print(torch.version.cuda or '')" 2>/dev/null || echo "")
     deactivate 2>/dev/null || true
-    if [[ "$TORCH_CUDA" != 12.4* ]]; then
-        echo "WARNING: Installed torch uses CUDA $TORCH_CUDA but driver supports 12.4 — forcing reinstall"
+    if [[ "$TORCH_CUDA" != 12.6* ]]; then
+        echo "WARNING: Installed torch uses CUDA $TORCH_CUDA but need 12.6 — forcing reinstall"
         rm -f /tmp/sd_comfy.prepared
     fi
 fi
@@ -49,21 +49,18 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
     pip install --upgrade wheel setuptools
     
     cd $REPO_DIR
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
-    pip install xformers --index-url https://download.pytorch.org/whl/cu124
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+    pip install xformers --index-url https://download.pytorch.org/whl/cu126
 
-    # Install requirements.txt — use cu124 as primary index so pip doesn't pull cu130 from PyPI
-    pip install -r requirements.txt --index-url https://download.pytorch.org/whl/cu124 --extra-index-url https://pypi.org/simple
+    # Install requirements.txt — use cu126 as primary index so pip doesn't pull cu130 from PyPI
+    pip install -r requirements.txt --index-url https://download.pytorch.org/whl/cu126 --extra-index-url https://pypi.org/simple
     # Install additional dependencies that custom nodes require
     pip install opencv-python scikit-image piexif segment-anything
     # Install ComfyUI Manager and other custom node dependencies
-    pip install GitPython toml rich uv matplotlib ultralytics lpips
-
-    # Install additional dependencies that custom nodes require
-    pip install opencv-python scikit-image piexif segment-anything
-    # Install ComfyUI Manager and other custom node dependencies
-    # NOTE: ultralytics requires torch<2.10 which can downgrade torch and cause mismatch!
-    pip install GitPython toml rich uv matplotlib ultralytics lpips simpleeval
+    # NOTE: ultralytics can downgrade torch — install with --no-deps then fix missing deps
+    pip install GitPython toml rich uv matplotlib lpips simpleeval
+    pip install ultralytics --no-deps
+    pip install pandas py-cpuinfo psutil 2>/dev/null || true
     # === VERSION CHECK AND FIX ===
     # Must happen AFTER all pip installs, as some packages (like ultralytics) can downgrade torch
     echo "=== Checking PyTorch/torchaudio version compatibility ==="
@@ -83,8 +80,8 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
         # Reinstall torchaudio from PyTorch CUDA index to match torch
         pip install --force-reinstall --no-deps \
             torchaudio==${TORCH_VERSION} \
-            --index-url https://download.pytorch.org/whl/cu124 || {
-            echo "ERROR: Failed to reinstall torchaudio from cu124 index"
+            --index-url https://download.pytorch.org/whl/cu126 || {
+            echo "ERROR: Failed to reinstall torchaudio from cu126 index"
             echo "Trying without CUDA suffix..."
             pip install --force-reinstall --no-deps torchaudio==${TORCH_BASE}
         }
