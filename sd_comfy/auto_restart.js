@@ -9,6 +9,7 @@ const http = require('http');
 const RESTART_INTERVAL = 0; // Disabled — Paperspace restarts every 6h, and torch.compile caches are lost on restart
 const QUEUE_CHECK_INTERVAL = 30 * 1000; // Check queue every 30 seconds
 const QUEUE_THRESHOLD = 5; // Restart if queue_remaining > 5
+const WARMUP_GRACE_PERIOD = 5 * 60 * 1000; // 5 min grace period after start/restart for torch.compile
 const LOG_FILE = '/tmp/comfyui_auto_restart.log';
 
 // Instance configuration (matches manage.sh)
@@ -21,6 +22,12 @@ const INSTANCES = {
 
 // Get current hostname from environment
 const PAPERSPACE_FQDN = process.env.PAPERSPACE_FQDN || 'localhost';
+
+// Track when each instance was last started (for warmup grace period)
+const instanceStartTimes = {};
+for (const id of Object.keys(INSTANCES)) {
+    instanceStartTimes[id] = Date.now(); // Assume all instances just started
+}
 
 // Logging function
 function log(message) {
@@ -90,6 +97,7 @@ function restartSingleInstance(instanceId) {
                     }
                     
                     log(`Successfully restarted instance ${instanceId}`);
+                    instanceStartTimes[instanceId] = Date.now();
                     if (stdout) log(stdout);
                     resolve(true);
                 });
@@ -204,6 +212,12 @@ async function checkAllQueues() {
     
     for (const result of results) {
         if (result.success && result.queueRemaining > QUEUE_THRESHOLD) {
+            const elapsed = Date.now() - (instanceStartTimes[result.instanceId] || 0);
+            if (elapsed < WARMUP_GRACE_PERIOD) {
+                const remaining = Math.round((WARMUP_GRACE_PERIOD - elapsed) / 1000);
+                log(`Instance ${result.instanceId} has ${result.queueRemaining} items but still in warmup (${remaining}s left) - skipping restart`);
+                continue;
+            }
             log(`Instance ${result.instanceId} has ${result.queueRemaining} items in queue (threshold: ${QUEUE_THRESHOLD}) - restarting...`);
             await restartSingleInstance(result.instanceId);
         } else if (result.success) {

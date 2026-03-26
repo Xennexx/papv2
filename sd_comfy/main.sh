@@ -58,6 +58,8 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
     pip install opencv-python scikit-image piexif segment-anything
     # Install ComfyUI Manager and other custom node dependencies
     pip install GitPython toml rich uv matplotlib lpips simpleeval
+    # Custom node dependencies
+    pip install deepdiff timm numba
     # Install ultralytics deps first, then ultralytics with --no-deps to prevent torch downgrade
     pip install requests polars scipy ultralytics-thop pandas psutil py-cpuinfo seaborn
     pip install ultralytics --no-deps
