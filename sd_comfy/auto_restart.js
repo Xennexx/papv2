@@ -10,12 +10,15 @@ const RESTART_INTERVAL = 0; // Disabled — Paperspace restarts every 6h, and to
 const QUEUE_CHECK_INTERVAL = 30 * 1000; // Check queue every 30 seconds
 const CONSECUTIVE_FAILURE_THRESHOLD = 3;
 const LOG_FILE = '/tmp/comfyui_auto_restart.log';
+const COMFY_LOG_DIR = process.env.LOG_DIR || '/tmp/log';
+const INSTANCE_ACTIVITY_GRACE_MS = 90 * 1000;
 
 // Instance configuration (matches manage.sh)
 const INSTANCES = {
     1: {
         port: 7005,
         path: '/sd-comfy/',
+        logFile: 'sd_comfy.log',
         queueThreshold: 18,
         warmupGracePeriod: 25 * 60 * 1000,
         stagnantQueueRestartAfter: 15 * 60 * 1000
@@ -23,6 +26,7 @@ const INSTANCES = {
     2: {
         port: 7100,
         path: '/com2/',
+        logFile: 'sd_comfy2.log',
         queueThreshold: 18,
         warmupGracePeriod: 25 * 60 * 1000,
         stagnantQueueRestartAfter: 15 * 60 * 1000
@@ -30,6 +34,7 @@ const INSTANCES = {
     3: {
         port: 7101,
         path: '/com3/',
+        logFile: 'sd_comfy3.log',
         queueThreshold: 10,
         warmupGracePeriod: 15 * 60 * 1000,
         stagnantQueueRestartAfter: 10 * 60 * 1000
@@ -37,6 +42,7 @@ const INSTANCES = {
     4: {
         port: 7102,
         path: '/com4/',
+        logFile: 'sd_comfy4.log',
         queueThreshold: 10,
         warmupGracePeriod: 15 * 60 * 1000,
         stagnantQueueRestartAfter: 10 * 60 * 1000
@@ -64,6 +70,26 @@ function log(message) {
     const logMessage = `[${timestamp}] ${message}\n`;
     console.log(logMessage.trim());
     fs.appendFileSync(LOG_FILE, logMessage);
+}
+
+function getInstanceLogAgeMs(instanceId, now = Date.now()) {
+    const instance = INSTANCES[instanceId];
+    if (!instance?.logFile) {
+        return null;
+    }
+
+    try {
+        const logPath = path.join(COMFY_LOG_DIR, instance.logFile);
+        const stats = fs.statSync(logPath);
+        return Math.max(0, now - stats.mtimeMs);
+    } catch (_) {
+        return null;
+    }
+}
+
+function hasRecentInstanceLogActivity(instanceId, now = Date.now()) {
+    const logAgeMs = getInstanceLogAgeMs(instanceId, now);
+    return logAgeMs !== null && logAgeMs <= INSTANCE_ACTIVITY_GRACE_MS;
 }
 
 // Function to check queue status for a single instance
@@ -279,6 +305,16 @@ async function checkAllQueues() {
                     continue;
                 }
 
+                if (hasRecentInstanceLogActivity(instanceId, now)) {
+                    const logAgeSeconds = Math.round(getInstanceLogAgeMs(instanceId, now) / 1000);
+                    state.lastQueueChangeAt = now;
+                    log(
+                        `Instance ${instanceId} queue ${result.queueRemaining} exceeds threshold ${instance.queueThreshold} ` +
+                        `but Comfy log was active ${logAgeSeconds}s ago - keeping instance online`
+                    );
+                    continue;
+                }
+
                 log(
                     `Instance ${instanceId} queue ${result.queueRemaining} has been stagnant for ` +
                     `${Math.round(stagnantFor / 1000)}s after warmup - restarting instance`
@@ -304,6 +340,15 @@ async function checkAllQueues() {
                 `Instance ${instanceId} check failed (${state.consecutiveFailures}/${CONSECUTIVE_FAILURE_THRESHOLD}): ` +
                 `${result.error}`
             );
+
+            if (hasRecentInstanceLogActivity(instanceId, now)) {
+                const logAgeSeconds = Math.round(getInstanceLogAgeMs(instanceId, now) / 1000);
+                state.consecutiveFailures = 0;
+                log(
+                    `Instance ${instanceId} check is failing, but Comfy log was active ${logAgeSeconds}s ago - skipping restart`
+                );
+                continue;
+            }
 
             if (state.consecutiveFailures >= CONSECUTIVE_FAILURE_THRESHOLD) {
                 log(
