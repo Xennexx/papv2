@@ -8,6 +8,33 @@ source .env
 # Set up a trap to call the error_exit function on ERR signal
 trap 'error_exit "### ERROR ###"' ERR
 
+ensure_custom_node_repo() {
+  local repo_url="$1"
+  local dir_name="$2"
+  local requirements_file="${3:-}"
+  local node_dir="$REPO_DIR/custom_nodes/$dir_name"
+  local requirements_marker="$node_dir/.requirements_installed"
+
+  mkdir -p "$REPO_DIR/custom_nodes"
+
+  if [[ ! -d "$node_dir" ]]; then
+    echo "Installing $dir_name custom node..."
+    git clone "$repo_url" "$node_dir"
+  fi
+
+  if [[ -n "$requirements_file" && -f "$node_dir/$requirements_file" && ! -f "$requirements_marker" ]]; then
+    echo "Installing dependencies for $dir_name..."
+    pip install -r "$node_dir/$requirements_file" --extra-index-url https://pypi.org/simple
+    touch "$requirements_marker"
+  fi
+}
+
+ensure_required_custom_nodes() {
+  ensure_custom_node_repo "https://github.com/chengzeyi/Comfy-WaveSpeed.git" "Comfy-WaveSpeed"
+  ensure_custom_node_repo "https://github.com/Fannovel16/comfyui_controlnet_aux.git" "comfyui_controlnet_aux" "requirements.txt"
+  ensure_custom_node_repo "https://github.com/rgthree/rgthree-comfy.git" "rgthree-comfy"
+}
+
 
 echo "### Setting up Stable Diffusion Comfy ###"
 log "Setting up Stable Diffusion Comfy"
@@ -103,20 +130,11 @@ else
 fi
 log "Finished Preparing Environment for Stable Diffusion Comfy"
 
-
-
-
-
+ensure_required_custom_nodes()
 
 if [[ -z "$INSTALL_ONLY" ]]; then
   echo "### Starting Stable Diffusion Comfy ###"
   log "Starting Stable Diffusion Comfy"
-
-  # Ensure Comfy-WaveSpeed custom node is installed (provides FBCache for ~14% speedup)
-  if [[ ! -d "$REPO_DIR/custom_nodes/Comfy-WaveSpeed" ]]; then
-    echo "Installing Comfy-WaveSpeed custom node..."
-    git clone https://github.com/chengzeyi/Comfy-WaveSpeed.git "$REPO_DIR/custom_nodes/Comfy-WaveSpeed"
-  fi
 
   cd "$REPO_DIR"
 

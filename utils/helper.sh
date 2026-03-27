@@ -99,8 +99,8 @@ prepare_repo(){
           log "Updating Repo $TARGET_REPO_DIR ..."
           cd $TARGET_REPO_DIR
           git fetch
-          git checkout $TARGET_REPO_BRANCH
-          git pull
+          git checkout ${TARGET_REPO_BRANCH:-master}
+          git pull origin ${TARGET_REPO_BRANCH:-master}
       elif [[ $UPDATE_REPO == "commit" ]]; then
           log "Updating $TARGET_REPO_DIR to commit $UPDATE_REPO_COMMIT..."
           cd $TARGET_REPO_DIR

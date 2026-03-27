@@ -38,7 +38,7 @@ if [[ -z "$INSTALL_ONLY" ]]; then
   log "Starting Stable Diffusion Comfy"
   cd "$REPO_DIR"
   PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --fast --preview-method none --port 7101" > $LOG_DIR/sd_comfy3.log 2>&1 &
-  echo $! > /tmp/sd_comfy.pid
+  echo $! > /tmp/sd_comfy3.pid
 fi
 
 if env | grep -q "PAPERSPACE"; then

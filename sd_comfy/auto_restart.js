@@ -8,16 +8,39 @@ const http = require('http');
 // Configuration
 const RESTART_INTERVAL = 0; // Disabled — Paperspace restarts every 6h, and torch.compile caches are lost on restart
 const QUEUE_CHECK_INTERVAL = 30 * 1000; // Check queue every 30 seconds
-const QUEUE_THRESHOLD = 5; // Restart if queue_remaining > 5
-const WARMUP_GRACE_PERIOD = 5 * 60 * 1000; // 5 min grace period after start/restart for torch.compile
+const CONSECUTIVE_FAILURE_THRESHOLD = 3;
 const LOG_FILE = '/tmp/comfyui_auto_restart.log';
 
 // Instance configuration (matches manage.sh)
 const INSTANCES = {
-    1: { port: 7005, path: '/sd-comfy/' },
-    2: { port: 7100, path: '/com2/' },
-    3: { port: 7101, path: '/com3/' },
-    4: { port: 7102, path: '/com4/' }
+    1: {
+        port: 7005,
+        path: '/sd-comfy/',
+        queueThreshold: 18,
+        warmupGracePeriod: 25 * 60 * 1000,
+        stagnantQueueRestartAfter: 15 * 60 * 1000
+    },
+    2: {
+        port: 7100,
+        path: '/com2/',
+        queueThreshold: 18,
+        warmupGracePeriod: 25 * 60 * 1000,
+        stagnantQueueRestartAfter: 15 * 60 * 1000
+    },
+    3: {
+        port: 7101,
+        path: '/com3/',
+        queueThreshold: 10,
+        warmupGracePeriod: 15 * 60 * 1000,
+        stagnantQueueRestartAfter: 10 * 60 * 1000
+    },
+    4: {
+        port: 7102,
+        path: '/com4/',
+        queueThreshold: 10,
+        warmupGracePeriod: 15 * 60 * 1000,
+        stagnantQueueRestartAfter: 10 * 60 * 1000
+    }
 };
 
 // Get current hostname from environment
@@ -25,8 +48,14 @@ const PAPERSPACE_FQDN = process.env.PAPERSPACE_FQDN || 'localhost';
 
 // Track when each instance was last started (for warmup grace period)
 const instanceStartTimes = {};
+const instanceState = {};
 for (const id of Object.keys(INSTANCES)) {
     instanceStartTimes[id] = Date.now(); // Assume all instances just started
+    instanceState[id] = {
+        consecutiveFailures: 0,
+        lastQueueRemaining: null,
+        lastQueueChangeAt: Date.now()
+    };
 }
 
 // Logging function
@@ -98,6 +127,11 @@ function restartSingleInstance(instanceId) {
                     
                     log(`Successfully restarted instance ${instanceId}`);
                     instanceStartTimes[instanceId] = Date.now();
+                    instanceState[instanceId] = {
+                        consecutiveFailures: 0,
+                        lastQueueRemaining: null,
+                        lastQueueChangeAt: Date.now()
+                    };
                     if (stdout) log(stdout);
                     resolve(true);
                 });
@@ -211,24 +245,72 @@ async function checkAllQueues() {
     const results = await Promise.all(checks);
     
     for (const result of results) {
-        if (result.success && result.queueRemaining > QUEUE_THRESHOLD) {
-            const elapsed = Date.now() - (instanceStartTimes[result.instanceId] || 0);
-            if (elapsed < WARMUP_GRACE_PERIOD) {
-                const remaining = Math.round((WARMUP_GRACE_PERIOD - elapsed) / 1000);
-                log(`Instance ${result.instanceId} has ${result.queueRemaining} items but still in warmup (${remaining}s left) - skipping restart`);
-                continue;
+        const instanceId = String(result.instanceId);
+        const instance = INSTANCES[instanceId];
+        const state = instanceState[instanceId];
+        const now = Date.now();
+        const elapsed = now - (instanceStartTimes[instanceId] || 0);
+
+        if (result.success) {
+            state.consecutiveFailures = 0;
+
+            if (state.lastQueueRemaining === null || state.lastQueueRemaining !== result.queueRemaining) {
+                state.lastQueueRemaining = result.queueRemaining;
+                state.lastQueueChangeAt = now;
             }
-            log(`Instance ${result.instanceId} has ${result.queueRemaining} items in queue (threshold: ${QUEUE_THRESHOLD}) - restarting...`);
-            await restartSingleInstance(result.instanceId);
-        } else if (result.success) {
-            // Only log occasionally to avoid spam
-            if (Math.random() < 0.1) { // 10% chance to log normal status
-                log(`Instance ${result.instanceId} queue: ${result.queueRemaining} items`);
+
+            if (result.queueRemaining > instance.queueThreshold) {
+                if (elapsed < instance.warmupGracePeriod) {
+                    const remaining = Math.round((instance.warmupGracePeriod - elapsed) / 1000);
+                    log(
+                        `Instance ${instanceId} queue ${result.queueRemaining} exceeds threshold ${instance.queueThreshold} ` +
+                        `but is still in warmup (${remaining}s left) - skipping restart`
+                    );
+                    continue;
+                }
+
+                const stagnantFor = now - state.lastQueueChangeAt;
+                if (stagnantFor < instance.stagnantQueueRestartAfter) {
+                    const stagnantSeconds = Math.round(stagnantFor / 1000);
+                    log(
+                        `Instance ${instanceId} queue ${result.queueRemaining} exceeds threshold ${instance.queueThreshold} ` +
+                        `but queue is still changing (${stagnantSeconds}s since last change) - keeping instance online`
+                    );
+                    continue;
+                }
+
+                log(
+                    `Instance ${instanceId} queue ${result.queueRemaining} has been stagnant for ` +
+                    `${Math.round(stagnantFor / 1000)}s after warmup - restarting instance`
+                );
+                await restartSingleInstance(result.instanceId);
+            } else if (Math.random() < 0.1) {
+                log(`Instance ${instanceId} queue: ${result.queueRemaining} items`);
             }
         } else if (result.error) {
-            // Only log errors occasionally to avoid spam
-            if (Math.random() < 0.2) { // 20% chance to log errors
-                log(`Instance ${result.instanceId} check failed: ${result.error}`);
+            state.consecutiveFailures += 1;
+
+            if (elapsed < instance.warmupGracePeriod) {
+                if (Math.random() < 0.25) {
+                    const remaining = Math.round((instance.warmupGracePeriod - elapsed) / 1000);
+                    log(
+                        `Instance ${instanceId} check failed during warmup (${remaining}s left): ${result.error}`
+                    );
+                }
+                continue;
+            }
+
+            log(
+                `Instance ${instanceId} check failed (${state.consecutiveFailures}/${CONSECUTIVE_FAILURE_THRESHOLD}): ` +
+                `${result.error}`
+            );
+
+            if (state.consecutiveFailures >= CONSECUTIVE_FAILURE_THRESHOLD) {
+                log(
+                    `Instance ${instanceId} failed ${state.consecutiveFailures} queue checks consecutively ` +
+                    `after warmup - restarting instance`
+                );
+                await restartSingleInstance(result.instanceId);
             }
         }
     }
@@ -237,7 +319,7 @@ async function checkAllQueues() {
 // Main execution
 log('ComfyUI auto-restart service started');
 log(`Will restart all instances every ${RESTART_INTERVAL / 1000 / 60} minutes`);
-log(`Will check queues every ${QUEUE_CHECK_INTERVAL / 1000} seconds (threshold: ${QUEUE_THRESHOLD})`);
+log(`Will check queues every ${QUEUE_CHECK_INTERVAL / 1000} seconds with per-instance thresholds and warmup windows`);
 
 // Set up queue monitoring (restarts stuck instances with deep queues)
 log('Starting queue monitoring...');
