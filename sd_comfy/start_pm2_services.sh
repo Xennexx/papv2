@@ -217,22 +217,6 @@ fi
 # Fleet agent service
 echo ""
 echo "3. Fleet agent service:"
-# Pull latest code from GitHub on every boot
-# Force-reset local changes first (file permissions change at boot, blocking pull)
-if [ -d /notebooks/.git ]; then
-    echo "  Pulling latest code from GitHub..."
-    cd /notebooks && git checkout -- . 2>/dev/null; git pull origin master 2>&1 | tail -3
-    PULL_HEAD=$(git rev-parse HEAD 2>/dev/null)
-    cd /notebooks/sd_comfy
-
-    # If code was updated, restart ComfyUI instances so new flags take effect
-    if [ -f /tmp/last_git_head ] && [ "$(cat /tmp/last_git_head)" != "$PULL_HEAD" ]; then
-        echo "  Code updated — restarting ComfyUI instances with new config..."
-        source .env 2>/dev/null
-        bash manage.sh restart all 2>&1 | tail -10
-    fi
-    echo "$PULL_HEAD" > /tmp/last_git_head
-fi
 # Install dependencies if missing or package.json changed
 if [ ! -d /notebooks/ps-fleet-agent/node_modules ] || [ /notebooks/ps-fleet-agent/package.json -nt /notebooks/ps-fleet-agent/node_modules/.package-lock.json ]; then
     echo "  Installing fleet-agent dependencies..."
@@ -264,6 +248,7 @@ if [ -f /notebooks/sd_comfy/warmup_common.py ]; then
     if pgrep -f "python3 /notebooks/sd_comfy/warmup_common.py" > /dev/null 2>&1; then
         echo "  ✓ Warmup already running"
     else
+        rm -f /tmp/comfy_warmup.log /tmp/comfy_warmup_status.json
         nohup python3 /notebooks/sd_comfy/warmup_common.py > /tmp/comfy_warmup.log 2>&1 &
         echo "  ✓ Warmup started in background (log: /tmp/comfy_warmup.log)"
     fi

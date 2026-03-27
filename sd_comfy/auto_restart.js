@@ -12,6 +12,13 @@ const CONSECUTIVE_FAILURE_THRESHOLD = 3;
 const LOG_FILE = '/tmp/comfyui_auto_restart.log';
 const COMFY_LOG_DIR = process.env.LOG_DIR || '/tmp/log';
 const INSTANCE_ACTIVITY_GRACE_MS = 90 * 1000;
+const WARMUP_STATUS_FILE = '/tmp/comfy_warmup_status.json';
+const WARMUP_STATUS_STALE_MS = 10 * 60 * 1000;
+const DEDICATED_WARMUP_MAX_GRACE_MS = 45 * 60 * 1000;
+const DEDICATED_WARMUP_TARGETS = {
+    '1': 'wai',
+    '2': 'pornmaster'
+};
 
 // Instance configuration (matches manage.sh)
 const INSTANCES = {
@@ -87,6 +94,49 @@ function getInstanceLogAgeMs(instanceId, now = Date.now()) {
 function hasRecentInstanceLogActivity(instanceId, now = Date.now()) {
     const logAgeMs = getInstanceLogAgeMs(instanceId, now);
     return logAgeMs !== null && logAgeMs <= INSTANCE_ACTIVITY_GRACE_MS;
+}
+
+function readWarmupStatus() {
+    try {
+        if (!fs.existsSync(WARMUP_STATUS_FILE)) {
+            return null;
+        }
+
+        return JSON.parse(fs.readFileSync(WARMUP_STATUS_FILE, 'utf8'));
+    } catch (_) {
+        return null;
+    }
+}
+
+function getDedicatedWarmupTargetStatus(instanceId, warmupStatus) {
+    const targetName = DEDICATED_WARMUP_TARGETS[String(instanceId)];
+    if (!targetName || !warmupStatus?.targets) {
+        return null;
+    }
+
+    return warmupStatus.targets[targetName] || null;
+}
+
+function isWarmupStatusFresh(warmupStatus, now = Date.now()) {
+    const updatedAt = warmupStatus?.updated_at ? Date.parse(warmupStatus.updated_at) : NaN;
+    if (!Number.isFinite(updatedAt)) {
+        return false;
+    }
+
+    return now - updatedAt <= WARMUP_STATUS_STALE_MS;
+}
+
+function isDedicatedWarmupStillRunning(instanceId, warmupStatus, elapsed, now = Date.now()) {
+    if (elapsed >= DEDICATED_WARMUP_MAX_GRACE_MS || !isWarmupStatusFresh(warmupStatus, now)) {
+        return false;
+    }
+
+    const targetStatus = getDedicatedWarmupTargetStatus(instanceId, warmupStatus);
+    if (!targetStatus) {
+        return false;
+    }
+
+    return targetStatus.state === 'pending' || targetStatus.state === 'running';
 }
 
 // Function to check queue status for a single instance
@@ -275,6 +325,7 @@ async function checkAllQueues() {
     const instanceIds = Object.keys(INSTANCES);
     const checks = instanceIds.map(id => checkInstanceQueue(parseInt(id)));
     const results = await Promise.all(checks);
+    const warmupStatus = readWarmupStatus();
     
     for (const result of results) {
         const instanceId = String(result.instanceId);
@@ -282,6 +333,8 @@ async function checkAllQueues() {
         const state = instanceState[instanceId];
         const now = Date.now();
         const elapsed = now - (instanceStartTimes[instanceId] || 0);
+        const dedicatedWarmupPending = isDedicatedWarmupStillRunning(instanceId, warmupStatus, elapsed, now);
+        const dedicatedWarmupStatus = getDedicatedWarmupTargetStatus(instanceId, warmupStatus);
 
         if (result.success) {
             state.consecutiveFailures = 0;
@@ -292,6 +345,17 @@ async function checkAllQueues() {
             }
 
             if (result.queueRemaining > instance.queueThreshold) {
+                if (dedicatedWarmupPending) {
+                    const completedCount = dedicatedWarmupStatus?.completed_resolutions?.length || 0;
+                    const totalCount = dedicatedWarmupStatus?.total_resolutions || 0;
+                    log(
+                        `Instance ${instanceId} queue ${result.queueRemaining} exceeds threshold ${instance.queueThreshold} ` +
+                        `but dedicated warmup is still ${dedicatedWarmupStatus?.state || 'pending'} ` +
+                        `(${completedCount}/${totalCount} resolutions compiled) - skipping restart`
+                    );
+                    continue;
+                }
+
                 if (elapsed < instance.warmupGracePeriod) {
                     const remaining = Math.round((instance.warmupGracePeriod - elapsed) / 1000);
                     log(
@@ -331,6 +395,15 @@ async function checkAllQueues() {
             }
         } else if (result.error) {
             state.consecutiveFailures += 1;
+
+            if (dedicatedWarmupPending) {
+                const remaining = Math.round((DEDICATED_WARMUP_MAX_GRACE_MS - elapsed) / 1000);
+                log(
+                    `Instance ${instanceId} check failed while dedicated warmup is still ` +
+                    `${dedicatedWarmupStatus?.state || 'pending'} (${remaining}s extended grace left): ${result.error}`
+                );
+                continue;
+            }
 
             if (elapsed < instance.warmupGracePeriod) {
                 if (Math.random() < 0.25) {
