@@ -49,9 +49,6 @@ const INSTANCES = {
     }
 };
 
-// Get current hostname from environment
-const PAPERSPACE_FQDN = process.env.PAPERSPACE_FQDN || 'localhost';
-
 // Track when each instance was last started (for warmup grace period)
 const instanceStartTimes = {};
 const instanceState = {};
@@ -100,13 +97,16 @@ function checkInstanceQueue(instanceId) {
             resolve({ instanceId, error: 'Invalid instance ID' });
             return;
         }
-        
-        const url = `https://${PAPERSPACE_FQDN}${instance.path}prompt`;
-        
-        https.get(url, (res) => {
+
+        const url = `http://127.0.0.1:${instance.port}/prompt`;
+        const request = http.get(url, (res) => {
             let data = '';
             res.on('data', (chunk) => data += chunk);
             res.on('end', () => {
+                if (res.statusCode && res.statusCode >= 400) {
+                    resolve({ instanceId, error: `HTTP ${res.statusCode}`, success: false });
+                    return;
+                }
                 try {
                     const response = JSON.parse(data);
                     const queueRemaining = response.exec_info?.queue_remaining || 0;
@@ -115,7 +115,13 @@ function checkInstanceQueue(instanceId) {
                     resolve({ instanceId, error: 'Failed to parse response', success: false });
                 }
             });
-        }).on('error', (error) => {
+        });
+
+        request.setTimeout(5000, () => {
+            request.destroy(new Error('Request timed out'));
+        });
+
+        request.on('error', (error) => {
             resolve({ instanceId, error: error.message, success: false });
         });
     });
