@@ -59,7 +59,7 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
     # Install ComfyUI Manager and other custom node dependencies
     pip install GitPython toml rich uv matplotlib lpips simpleeval
     # Custom node dependencies
-    pip install deepdiff timm numba
+    pip install deepdiff timm numba pynvml addict
     # Install ultralytics deps first, then ultralytics with --no-deps to prevent torch downgrade
     pip install requests polars scipy ultralytics-thop pandas psutil py-cpuinfo seaborn
     pip install ultralytics --no-deps
@@ -119,6 +119,13 @@ if [[ -z "$INSTALL_ONLY" ]]; then
   fi
 
   cd "$REPO_DIR"
+
+  # Fix tinyterraNodes duplicate config option that prevents it from loading
+  TINYTERRA_CONFIG="$REPO_DIR/custom_nodes/ComfyUI_tinyterraNodes/config.ini"
+  if [[ -f "$TINYTERRA_CONFIG" ]]; then
+    awk '!seen[$0]++' "$TINYTERRA_CONFIG" > "${TINYTERRA_CONFIG}.tmp" && mv "${TINYTERRA_CONFIG}.tmp" "$TINYTERRA_CONFIG"
+  fi
+
   PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --fast --preview-method none --port 7005" > $LOG_DIR/sd_comfy.log 2>&1 &
   echo $! > /tmp/sd_comfy.pid
 fi
