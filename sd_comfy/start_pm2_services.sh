@@ -258,6 +258,19 @@ pm2 set pm2-logrotate:max_size 50M > /dev/null 2>&1
 pm2 set pm2-logrotate:retain 5 > /dev/null 2>&1
 pm2 set pm2-logrotate:compress true > /dev/null 2>&1
 
+echo ""
+echo "4. Dedicated lane warmup:"
+if [ -f /notebooks/sd_comfy/warmup_common.py ]; then
+    if pgrep -f "python3 /notebooks/sd_comfy/warmup_common.py" > /dev/null 2>&1; then
+        echo "  ✓ Warmup already running"
+    else
+        nohup python3 /notebooks/sd_comfy/warmup_common.py > /tmp/comfy_warmup.log 2>&1 &
+        echo "  ✓ Warmup started in background (log: /tmp/comfy_warmup.log)"
+    fi
+else
+    echo "  - Warmup script not found, skipping"
+fi
+
 # Final status report
 echo ""
 echo "==================================="
