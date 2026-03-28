@@ -36,6 +36,47 @@ WARMUP_TARGETS = [
         # Match the most common recent production sizes on the dedicated Pornmaster lane.
         "resolutions": [(832, 1216), (672, 1216), (1216, 1216)],
     },
+    {
+        "name": "hyperfusion",
+        "instance_id": 3,
+        "port": 7101,
+        "checkpoint": "hyperfusionVpred_v9Vpred_final.safetensors",
+        "lora": None,
+        "cfg": 8.0,
+        "sampler": "euler_ancestral",
+        "scheduler": "normal",
+        "steps": 20,
+        # Warm the most common Hyperfusion size so fresh notebooks do not spend the
+        # first real user request compiling the full 20-step graph.
+        "resolutions": [(832, 1216)],
+    },
+    {
+        "name": "overflow_cyberrealistic",
+        "instance_id": 4,
+        "port": 7102,
+        "checkpoint": "cyberrealistic_v70DMD2.safetensors",
+        "lora": None,
+        "cfg": 1.5,
+        "sampler": "lcm",
+        "scheduler": "exponential",
+        "steps": 8,
+        # Prime the most common DMD2 overflow path on com4.
+        "resolutions": [(832, 1216)],
+    },
+    {
+        "name": "overflow_noskinny",
+        "instance_id": 4,
+        "port": 7102,
+        "checkpoint": "noSkinnyChicks_aeaeaGladeIII.safetensors",
+        "lora": None,
+        "cfg": 1.0,
+        "sampler": "euler",
+        "scheduler": "simple",
+        "steps": 20,
+        # This model has shown long cold starts on com4 in production; warm the
+        # common portrait size users are currently hitting.
+        "resolutions": [(704, 832)],
+    },
 ]
 WARMUP_STATUS_FILE = "/tmp/comfy_warmup_status.json"
 
@@ -57,7 +98,8 @@ def write_status(status):
     os.replace(tmp_path, WARMUP_STATUS_FILE)
 
 
-def build_initial_status():
+def build_initial_status(targets=None):
+    targets = targets or WARMUP_TARGETS
     status = {
         "started_at": iso_now(),
         "updated_at": iso_now(),
@@ -65,7 +107,7 @@ def build_initial_status():
         "targets": {},
     }
 
-    for target in WARMUP_TARGETS:
+    for target in targets:
         status["targets"][target["name"]] = {
             "state": "pending",
             "ready": False,
@@ -80,6 +122,23 @@ def build_initial_status():
         }
 
     return status
+
+
+def get_selected_targets():
+    selected_names = os.getenv("COMFY_WARMUP_TARGETS", "").strip()
+    if not selected_names:
+        return WARMUP_TARGETS
+
+    requested = {
+        name.strip()
+        for name in selected_names.split(",")
+        if name.strip()
+    }
+    targets = [target for target in WARMUP_TARGETS if target["name"] in requested]
+    missing = sorted(requested - {target["name"] for target in targets})
+    if missing:
+        log(f"Ignoring unknown warmup target(s): {', '.join(missing)}")
+    return targets
 
 
 def update_target_status(status, target_name, **fields):
@@ -353,10 +412,18 @@ def main():
         log("Warmup disabled by COMFY_WARMUP_ENABLED=0")
         return
 
-    status = build_initial_status()
+    targets = get_selected_targets()
+    if not targets:
+        log("No warmup targets selected")
+        return
+
+    status = build_initial_status(targets)
     write_status(status)
-    log("Starting ComfyUI compile warmup for dedicated SDXL lanes")
-    for target in WARMUP_TARGETS:
+    log(
+        "Starting ComfyUI compile warmup for lanes: "
+        + ", ".join(target["name"] for target in targets)
+    )
+    for target in targets:
         warm_target(target, status)
     status["completed_at"] = iso_now()
     write_status(status)
