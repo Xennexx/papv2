@@ -19,7 +19,9 @@ WARMUP_TARGETS = [
         "sampler": "lcm",
         "scheduler": "exponential",
         "steps": 8,
-        "resolutions": [(1024, 1024), (832, 1216)],
+        # Match the most common recent production sizes on the dedicated WAI lane
+        # so fresh notebooks do not spend their first real requests compiling them.
+        "resolutions": [(832, 1216), (1216, 1216), (1024, 1216)],
     },
     {
         "name": "pornmaster",
@@ -31,7 +33,8 @@ WARMUP_TARGETS = [
         "sampler": "lcm",
         "scheduler": "exponential",
         "steps": 8,
-        "resolutions": [(1024, 1024), (832, 1216)],
+        # Match the most common recent production sizes on the dedicated Pornmaster lane.
+        "resolutions": [(832, 1216), (672, 1216), (1216, 1216)],
     },
 ]
 WARMUP_STATUS_FILE = "/tmp/comfy_warmup_status.json"
