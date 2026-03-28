@@ -181,6 +181,7 @@ function checkInstanceQueue(instanceId) {
 function restartSingleInstance(instanceId) {
     return new Promise((resolve) => {
         const manageScript = path.join(__dirname, 'manage.sh');
+        const recoveryLog = `/tmp/comfy_recover_instance${instanceId}.log`;
         
         if (!fs.existsSync(manageScript)) {
             log(`ERROR: manage.sh not found at ${manageScript}`);
@@ -200,14 +201,16 @@ function restartSingleInstance(instanceId) {
             
             // Wait 2 seconds, then start
             setTimeout(() => {
-                exec(`bash "${manageScript}" start ${instanceId}`, (error, stdout, stderr) => {
+                exec(
+                    `nohup env -u MPLBACKEND bash "${manageScript}" start ${instanceId} > "${recoveryLog}" 2>&1 < /dev/null &`,
+                    (error, stdout, stderr) => {
                     if (error) {
                         log(`ERROR starting instance ${instanceId}: ${error.message}`);
                         resolve(false);
                         return;
                     }
                     
-                    log(`Successfully restarted instance ${instanceId}`);
+                    log(`Triggered detached restart for instance ${instanceId} (log: ${recoveryLog})`);
                     instanceStartTimes[instanceId] = Date.now();
                     instanceState[instanceId] = {
                         consecutiveFailures: 0,
@@ -216,7 +219,8 @@ function restartSingleInstance(instanceId) {
                     };
                     if (stdout) log(stdout);
                     resolve(true);
-                });
+                    }
+                );
             }, 2000);
         });
     });
@@ -335,6 +339,7 @@ async function checkAllQueues() {
         const elapsed = now - (instanceStartTimes[instanceId] || 0);
         const dedicatedWarmupPending = isDedicatedWarmupStillRunning(instanceId, warmupStatus, elapsed, now);
         const dedicatedWarmupStatus = getDedicatedWarmupTargetStatus(instanceId, warmupStatus);
+        const dedicatedWarmupFailed = dedicatedWarmupStatus?.state === 'failed';
 
         if (result.success) {
             state.consecutiveFailures = 0;
@@ -405,7 +410,7 @@ async function checkAllQueues() {
                 continue;
             }
 
-            if (elapsed < instance.warmupGracePeriod) {
+            if (!dedicatedWarmupFailed && elapsed < instance.warmupGracePeriod) {
                 if (Math.random() < 0.25) {
                     const remaining = Math.round((instance.warmupGracePeriod - elapsed) / 1000);
                     log(
@@ -413,6 +418,12 @@ async function checkAllQueues() {
                     );
                 }
                 continue;
+            }
+
+            if (dedicatedWarmupFailed) {
+                log(
+                    `Instance ${instanceId} check failed after dedicated warmup already failed: ${result.error}`
+                );
             }
 
             log(

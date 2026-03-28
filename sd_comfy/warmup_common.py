@@ -2,6 +2,7 @@
 import json
 import os
 import random
+import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -10,6 +11,7 @@ import urllib.request
 WARMUP_TARGETS = [
     {
         "name": "wai",
+        "instance_id": 1,
         "port": 7005,
         "checkpoint": "waiIllustriousSDXL_v160.safetensors",
         "lora": "dmd2_sdxl_4step_lora_fp16.safetensors",
@@ -21,6 +23,7 @@ WARMUP_TARGETS = [
     },
     {
         "name": "pornmaster",
+        "instance_id": 2,
         "port": 7100,
         "checkpoint": "pornmaster_proSDXLV7.safetensors",
         "lora": "dmd2_sdxl_4step_lora_fp16.safetensors",
@@ -103,6 +106,27 @@ def wait_until_ready(port, timeout_seconds=180):
             pass
         time.sleep(2)
     return False
+
+
+def detached_start_instance(instance_id):
+    log_path = f"/tmp/comfy_recover_instance{instance_id}.log"
+    env = os.environ.copy()
+    env.pop("MPLBACKEND", None)
+    subprocess.Popen(
+        [
+            "bash",
+            "-lc",
+            f'nohup bash /notebooks/sd_comfy/manage.sh start {instance_id} > "{log_path}" 2>&1 < /dev/null &'
+        ],
+        env=env,
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    log(
+        f"Triggered detached recovery for instance {instance_id} "
+        f"(log: {log_path})"
+    )
 
 
 def build_sdxl_compile_workflow(checkpoint, lora_name, width, height, steps, sampler, scheduler, cfg):
@@ -228,15 +252,42 @@ def warm_target(target, status):
     )
 
     if not wait_until_ready(port):
-        log(f"{target['name']} port {port} did not become ready in time")
-        update_target_status(
-            status,
-            target_name,
-            state="failed",
-            last_error=f"Port {port} did not become ready in time",
-            completed_at=iso_now(),
-        )
-        return
+        instance_id = target.get("instance_id")
+        if instance_id:
+            update_target_status(
+                status,
+                target_name,
+                last_error=f"Port {port} did not become ready in time; attempting recovery",
+            )
+            log(
+                f"{target['name']} port {port} did not become ready in time; "
+                f"attempting detached recovery for instance {instance_id}"
+            )
+            detached_start_instance(instance_id)
+            if wait_until_ready(port, timeout_seconds=240):
+                log(
+                    f"{target['name']} port {port} became ready after detached recovery"
+                )
+            else:
+                log(f"{target['name']} port {port} did not become ready in time")
+                update_target_status(
+                    status,
+                    target_name,
+                    state="failed",
+                    last_error=f"Port {port} did not become ready in time",
+                    completed_at=iso_now(),
+                )
+                return
+        else:
+            log(f"{target['name']} port {port} did not become ready in time")
+            update_target_status(
+                status,
+                target_name,
+                state="failed",
+                last_error=f"Port {port} did not become ready in time",
+                completed_at=iso_now(),
+            )
+            return
 
     completed_resolutions = []
     failed_resolutions = []
