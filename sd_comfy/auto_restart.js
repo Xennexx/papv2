@@ -27,6 +27,7 @@ const INSTANCES = {
         path: '/sd-comfy/',
         logFile: 'sd_comfy.log',
         queueThreshold: 18,
+        disableQueueDepthRestart: true,
         warmupGracePeriod: 25 * 60 * 1000,
         stagnantQueueRestartAfter: 15 * 60 * 1000
     },
@@ -35,6 +36,7 @@ const INSTANCES = {
         path: '/com2/',
         logFile: 'sd_comfy2.log',
         queueThreshold: 18,
+        disableQueueDepthRestart: true,
         warmupGracePeriod: 25 * 60 * 1000,
         stagnantQueueRestartAfter: 15 * 60 * 1000
     },
@@ -347,6 +349,13 @@ async function checkAllQueues() {
             if (state.lastQueueRemaining === null || state.lastQueueRemaining !== result.queueRemaining) {
                 state.lastQueueRemaining = result.queueRemaining;
                 state.lastQueueChangeAt = now;
+            }
+
+            if (instance.disableQueueDepthRestart) {
+                if (Math.random() < 0.1) {
+                    log(`Instance ${instanceId} queue: ${result.queueRemaining} items (depth restart disabled for hot dedicated lane)`);
+                }
+                continue;
             }
 
             if (result.queueRemaining > instance.queueThreshold) {
