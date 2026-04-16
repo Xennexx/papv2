@@ -124,9 +124,13 @@ mkdir -p $LOG_DIR
 
 
 echo "Installing common dependencies"
+# libcairo2-dev + pkg-config are required by pycairo which is pulled in by
+# comfyui_controlnet_aux's requirements.txt. Without them pip fails and
+# main.sh's `set -e` kills the whole boot before ComfyUI instance 1 starts.
 apt-get install -qq -y curl jq git-lfs ninja-build \
     aria2 zip python3-venv python3-dev python3.10 \
-    python3.10-venv python3.10-dev python3.10-tk  > /dev/null
+    python3.10-venv python3.10-dev python3.10-tk \
+    libcairo2-dev pkg-config > /dev/null
 apt-get install -y htop > /dev/null
 
 # Update Node.js to version 20.x
