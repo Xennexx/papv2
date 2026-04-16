@@ -130,7 +130,7 @@ else
 fi
 log "Finished Preparing Environment for Stable Diffusion Comfy"
 
-ensure_required_custom_nodes()
+ensure_required_custom_nodes
 
 if [[ -z "$INSTALL_ONLY" ]]; then
   echo "### Starting Stable Diffusion Comfy ###"
