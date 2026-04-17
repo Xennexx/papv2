@@ -61,6 +61,74 @@ if [ -d /notebooks/.git ]; then
         && git pull origin master 2>&1 | tail -5 ) || true
 fi
 
+# Deathwatch: log resource state every 10s to /storage so we can post-mortem
+# any pod kill. Safe to run everywhere because /storage is persistent.
+if command -v python3 >/dev/null 2>&1; then
+    cat > /tmp/deathwatch.py <<'PYEOF'
+import os, time, signal
+HOSTNAME = os.environ.get("HOSTNAME", "unknown")
+START_TS = time.strftime("%Y%m%d_%H%M%S")
+LOGPATH = f"/storage/deathwatch-{HOSTNAME}-{START_TS}.log"
+def read_first(p):
+    try: return open(p).read().strip()
+    except Exception: return None
+def top_procs(n=6):
+    procs = []
+    try:
+        for d in os.listdir('/proc'):
+            if not d.isdigit(): continue
+            try:
+                st = open(f'/proc/{d}/status').read()
+                rss = next((l for l in st.splitlines() if l.startswith('VmRSS:')), None)
+                if rss:
+                    rss_kb = int(rss.split()[1])
+                    cmdline = open(f'/proc/{d}/cmdline').read().replace(chr(0),' ')[:100]
+                    procs.append((rss_kb, d, cmdline))
+            except Exception: continue
+    except Exception: pass
+    procs.sort(reverse=True)
+    return procs[:n]
+def cg_mem():
+    vals={}
+    for base in ('/sys/fs/cgroup','/sys/fs/cgroup/memory'):
+        for fname in ('memory.current','memory.max','memory.peak','memory.events'):
+            v=read_first(f"{base}/{fname}")
+            if v and fname not in vals: vals[fname]=v.replace('\n',' ')
+    return vals
+def meminfo():
+    info={}
+    try:
+        for l in open('/proc/meminfo'):
+            k,v=l.split(':',1); info[k.strip()]=v.strip().split()[0]
+    except Exception: pass
+    return info
+stop=False
+def sig(*_):
+    global stop; stop=True
+signal.signal(signal.SIGTERM, sig); signal.signal(signal.SIGINT, sig)
+with open(LOGPATH,'w',buffering=1) as f:
+    f.write(f"=== start {time.strftime('%Y-%m-%d %H:%M:%S')} host={HOSTNAME} ===\n")
+    try: f.write(f"pid1: {open('/proc/1/cmdline').read().replace(chr(0),' ')}\n")
+    except: pass
+    i=0
+    while not stop:
+        i+=1
+        mi=meminfo(); cg=cg_mem()
+        ts=time.strftime('%H:%M:%S')
+        f.write(f"[{ts}] t={i} MemAvail={mi.get('MemAvailable','?')}kB "
+                f"cg_cur={cg.get('memory.current','?')} cg_max={cg.get('memory.max','?')} "
+                f"cg_peak={cg.get('memory.peak','?')} cg_events={cg.get('memory.events','?')}\n")
+        for rss,pid,cmd in top_procs(6):
+            f.write(f"        #{pid} rss={rss:>10}kB {cmd}\n")
+        for _ in range(10):
+            if stop: break
+            time.sleep(1)
+    f.write(f"=== stop graceful {time.strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+PYEOF
+    nohup python3 /tmp/deathwatch.py > /dev/null 2>&1 &
+    echo "[entry] deathwatch spawned pid=$!"
+fi
+
 function source_env_file() {
   if [[ -e ".env" ]]; then
     source ".env"
