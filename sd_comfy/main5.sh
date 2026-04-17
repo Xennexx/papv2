@@ -11,7 +11,7 @@ trap 'error_exit "### ERROR ###"' ERR
 
 echo "### Setting up Stable Diffusion Comfy ###"
 log "Setting up Stable Diffusion Comfy"
-if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
+if [[ "$REINSTALL_SD_COMFY" || ! -f "$VENV_DIR/sd_comfy-env/.prepared" ]]; then
 
     
     TARGET_REPO_URL="https://github.com/comfyanonymous/ComfyUI.git" \
@@ -46,7 +46,7 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
     pip install xformers --index-url https://download.pytorch.org/whl/cu124
     pip install -r requirements.txt --index-url https://download.pytorch.org/whl/cu124 --extra-index-url https://pypi.org/simple
     
-    touch /tmp/sd_comfy.prepared
+    touch $VENV_DIR/sd_comfy-env/.prepared
 else
     
     source $VENV_DIR/sd_comfy-env/bin/activate

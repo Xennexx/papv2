@@ -16,7 +16,7 @@ log "Setting up Stable Diffusion Comfy Instance 4"
 echo "Waiting for main.sh to complete installation..."
 WAIT_COUNT=0
 MAX_WAIT=120  # Wait up to 10 minutes (120 x 5 seconds)
-while [[ ! -f "/tmp/sd_comfy.prepared" ]]; do
+while [[ ! -f "$VENV_DIR/sd_comfy-env/.prepared" ]]; do
     sleep 5
     WAIT_COUNT=$((WAIT_COUNT + 1))
     if [[ $WAIT_COUNT -ge $MAX_WAIT ]]; then

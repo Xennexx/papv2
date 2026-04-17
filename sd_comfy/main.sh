@@ -40,17 +40,17 @@ echo "### Setting up Stable Diffusion Comfy ###"
 log "Setting up Stable Diffusion Comfy"
 
 # Force reinstall if torch has wrong CUDA version for this driver
-if [[ -f "/tmp/sd_comfy.prepared" ]] && [[ -f "$VENV_DIR/sd_comfy-env/bin/activate" ]]; then
+if [[ -f "$VENV_DIR/sd_comfy-env/.prepared" ]] && [[ -f "$VENV_DIR/sd_comfy-env/bin/activate" ]]; then
     source $VENV_DIR/sd_comfy-env/bin/activate
     TORCH_CUDA=$( python -c "import torch; print(torch.version.cuda or '')" 2>/dev/null || echo "")
     deactivate 2>/dev/null || true
     if [[ "$TORCH_CUDA" != 12.6* ]]; then
         echo "WARNING: Installed torch uses CUDA $TORCH_CUDA but need 12.6 — forcing reinstall"
-        rm -f /tmp/sd_comfy.prepared
+        rm -f $VENV_DIR/sd_comfy-env/.prepared
     fi
 fi
 
-if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
+if [[ "$REINSTALL_SD_COMFY" || ! -f "$VENV_DIR/sd_comfy-env/.prepared" ]]; then
 
     
     TARGET_REPO_URL="https://github.com/comfyanonymous/ComfyUI.git" \
@@ -122,7 +122,7 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "/tmp/sd_comfy.prepared" ]]; then
     echo "=== Final PyTorch package versions ==="
     python -c "import torch; import torchaudio; print('torch:', torch.__version__); print('torchaudio:', torchaudio.__version__); print('CUDA:', torch.cuda.is_available())"
 
-    touch /tmp/sd_comfy.prepared
+    touch $VENV_DIR/sd_comfy-env/.prepared
 else
     
     source $VENV_DIR/sd_comfy-env/bin/activate
