@@ -53,12 +53,15 @@ PYEOF
 fi
 
 # Pull latest code from GitHub as the very first thing so future fixes
-# land on the next boot regardless of what blows up downstream.
+# land on the next boot regardless of what blows up downstream. MUST be
+# time-bounded — a hung git pull here stalls the entire boot and leaves
+# the placeholder serving while nginx never starts.
 if [ -d /notebooks/.git ]; then
-    echo "[entry] Early git pull (before nginx/install)..."
+    echo "[entry] Early git pull (30s timeout)..."
     ( cd /notebooks \
         && git checkout -- . 2>/dev/null \
-        && git pull origin master 2>&1 | tail -5 ) || true
+        && timeout 30 git pull origin master 2>&1 | tail -5 ) || \
+        echo "[entry] git pull timed out or failed; continuing with on-disk code"
 fi
 
 # Deathwatch: log resource state every 10s to /storage so we can post-mortem
