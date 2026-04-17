@@ -18,3 +18,16 @@ c.ServerProxy.servers = {
     'com3':     {'port': 7101, 'absolute_url': False},
     'com4':     {'port': 7102, 'absolute_url': False},
 }
+
+# Disable jupyter auth so the stufferai backend's axios.get can reach
+# /sd-comfy/prompt (etc) without a token and get ComfyUI's actual response
+# (instead of jupyter's HTML login page, which has no `exec_info` field and
+# causes backend to mark the GPU as offline).
+#
+# This is equivalent to the old nginx-on-8888 setup, which also had no auth.
+# The FQDN is already semi-random (unguessable per boot), and if we ever need
+# stricter auth we can add an nginx on a different port in front of this.
+c.ServerApp.token = ''
+c.ServerApp.password = ''
+c.ServerApp.disable_check_xsrf = True
+c.IdentityProvider.token = ''
