@@ -130,6 +130,15 @@ mkdir -p $LOG_DIR
 
 
 echo "Installing common dependencies"
+# apt-get update is required — the base container's apt cache points at old
+# package versions that security.ubuntu.com has already rotated out, so
+# installing python3.10-venv etc. 404s without a fresh update. A stale cache
+# silently breaks the entire boot: main.sh rm -rf's /storage/sd_comfy-env
+# then tries `python3.10 -m venv` which fails because python3.10-venv never
+# got installed, main2/3/4 time out waiting for the .prepared marker.
+# Time-bounded so a hung mirror can't stall the whole boot.
+timeout 60 apt-get update -qq > /dev/null 2>&1 || \
+    echo "[entry] apt-get update timed out or failed; continuing (install may 404)"
 # libcairo2-dev + pkg-config are required by pycairo which is pulled in by
 # comfyui_controlnet_aux's requirements.txt. Without them pip fails and
 # main.sh's `set -e` kills the whole boot before ComfyUI instance 1 starts.
