@@ -1,56 +1,12 @@
 #!/bin/bash
 # Don't exit on error
 
-# ============================================================================
-# READINESS FAST-PATH
-# ----------------------------------------------------------------------------
-# Paperspace's Kubernetes readiness probe times out at ~60s waiting for
-# port 8888 to respond. nginx used to fit, but boot time has crept up
-# (Ubuntu 22.04 apt index + nodejs setup + pip installs) and boots now
-# ride right against the deadline. We bind :8888 with a tiny Python HTTP
-# server immediately so the probe passes, then hand off to nginx once the
-# real stack is ready. python3 and nginx are both pre-installed in the
-# gradient-base image.
-# ============================================================================
-if command -v python3 >/dev/null 2>&1; then
-    cat > /tmp/readiness_placeholder.py <<'PYEOF'
-import http.server, socketserver, signal, sys
-class H(http.server.BaseHTTPRequestHandler):
-    def log_message(self, *a): pass
-    def _ok(self):
-        self.send_response(200)
-        self.send_header('Content-Type', 'text/plain')
-        self.send_header('Cache-Control', 'no-store')
-        self.end_headers()
-    def do_GET(self):  self._ok(); self.wfile.write(b'booting')
-    def do_HEAD(self): self._ok()
-    def do_POST(self): self._ok(); self.wfile.write(b'booting')
-socketserver.TCPServer.allow_reuse_address = True
-try:
-    srv = socketserver.TCPServer(('0.0.0.0', 8888), H)
-except OSError:
-    # Port already bound (nginx beat us to it) — harmless, just exit.
-    sys.exit(0)
-def _shutdown(*_):
-    try: srv.shutdown()
-    except Exception: pass
-    sys.exit(0)
-signal.signal(signal.SIGTERM, _shutdown)
-signal.signal(signal.SIGINT,  _shutdown)
-srv.serve_forever()
-PYEOF
-    nohup python3 -u /tmp/readiness_placeholder.py \
-        > /tmp/readiness_placeholder.log 2>&1 &
-    echo $! > /tmp/readiness_placeholder.pid
-    for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
-        if (exec 3<>/dev/tcp/127.0.0.1/8888) 2>/dev/null; then
-            exec 3>&- 2>/dev/null
-            echo "[entry] readiness placeholder bound :8888"
-            break
-        fi
-        sleep 0.25
-    done
-fi
+# entry.sh now runs in the background (spawned by the Paperspace notebook
+# command alongside jupyter lab on port 8888). Jupyter itself binds :8888,
+# so we no longer need the old readiness placeholder or nginx. entry.sh's
+# only responsibility is to set up + launch the ComfyUI instances on the
+# internal ports (7005/7100/7101/7102). jupyter-server-proxy handles the
+# external /sd-comfy/, /com2/, /com3/, /com4/ routing.
 
 # Pull latest code from GitHub as the very first thing so future fixes
 # land on the next boot regardless of what blows up downstream. MUST be
@@ -169,17 +125,8 @@ mkdir -p $LOG_DIR
   chmod +x $WORKING_DIR/status_check.py
   echo "alias status='watch -n 1 /$WORKING_DIR/status_check.py'" >> ~/.bashrc
 
-  # ARCHITECTURAL NOTE: we no longer run nginx. Paperspace's infra evicts any
-  # pod that replaces jupyter-on-:8888 with nginx (empirically verified — such
-  # pods reach Running, stay for ~4 min, then get killed). Instead we use
-  # jupyter-server-proxy (set up in startup.sh before jupyter exec) to route
-  # /sd-comfy/, /com2/, /com3/, /com4/ through jupyter to the ComfyUI ports.
-  #
-  # Kill the readiness placeholder now (jupyter on :8888 will take over).
-  if [[ -f /tmp/readiness_placeholder.pid ]]; then
-    kill -TERM "$(cat /tmp/readiness_placeholder.pid)" 2>/dev/null || true
-    rm -f /tmp/readiness_placeholder.pid
-  fi
+  # No nginx/placeholder anymore — jupyter owns :8888 and jupyter-server-proxy
+  # fans out /sd-comfy/, /com2/, /com3/, /com4/ to the ComfyUI instances.
 
 
 echo "Installing common dependencies"
