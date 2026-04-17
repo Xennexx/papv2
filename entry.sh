@@ -168,30 +168,18 @@ mkdir -p $LOG_DIR
   # Add alias to check the status of the web app
   chmod +x $WORKING_DIR/status_check.py
   echo "alias status='watch -n 1 /$WORKING_DIR/status_check.py'" >> ~/.bashrc
-  
-  # Use Nginx to expose web app in Paperspace
-  # nginx is pre-installed in gradient-base, so skip apt-get update/install
-  # when it's already present. Saves ~5s on the critical boot path.
-  if ! command -v nginx >/dev/null 2>&1; then
-    echo "nginx not found; running apt-get update + install"
-    apt-get update -o Acquire::Languages=none -o Acquire::Translation=none
-    apt-get install -qq -y nginx > /dev/null
-  fi
 
-  cp /$WORKING_DIR/nginx/default /etc/nginx/sites-available/default
-  cp /$WORKING_DIR/nginx/nginx.conf /etc/nginx/nginx.conf
-
-  # Hand port 8888 off from the readiness placeholder to nginx.
+  # ARCHITECTURAL NOTE: we no longer run nginx. Paperspace's infra evicts any
+  # pod that replaces jupyter-on-:8888 with nginx (empirically verified — such
+  # pods reach Running, stay for ~4 min, then get killed). Instead we use
+  # jupyter-server-proxy (set up in startup.sh before jupyter exec) to route
+  # /sd-comfy/, /com2/, /com3/, /com4/ through jupyter to the ComfyUI ports.
+  #
+  # Kill the readiness placeholder now (jupyter on :8888 will take over).
   if [[ -f /tmp/readiness_placeholder.pid ]]; then
     kill -TERM "$(cat /tmp/readiness_placeholder.pid)" 2>/dev/null || true
     rm -f /tmp/readiness_placeholder.pid
-    for _ in 1 2 3 4 5 6 7 8 9 10; do
-      if ! (exec 3<>/dev/tcp/127.0.0.1/8888) 2>/dev/null; then break; fi
-      exec 3>&- 2>/dev/null
-      sleep 0.2
-    done
   fi
-  /usr/sbin/nginx
 
 
 echo "Installing common dependencies"
