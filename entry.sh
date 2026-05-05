@@ -129,6 +129,52 @@ mkdir -p $LOG_DIR
   # fans out /sd-comfy/, /com2/, /com3/, /com4/ to the ComfyUI instances.
 
 
+
+# ──────────────────────────────────────────────────────────────────────
+# APT mirror failover (added 2026-05-05 after pap1+pap2 boots deadlocked
+# on Canonical mirror egress). Probes archive.ubuntu.com on a fast
+# timeout; if unreachable, swaps sources.list (and sources.list.d/*) to
+# the first reachable fallback. mirrors.edge.kernel.org carries both the
+# archive AND security suites and was the only Canonical-adjacent mirror
+# that stayed reachable from these specific pods that day. Idempotent —
+# no-op when archive.ubuntu.com is healthy.
+# ──────────────────────────────────────────────────────────────────────
+ensure_apt_mirror_reachable() {
+    if timeout 6 curl -4 -sf -o /dev/null \
+        "http://archive.ubuntu.com/ubuntu/dists/jammy/Release"; then
+        return 0
+    fi
+    echo "[entry] archive.ubuntu.com unreachable; trying fallback mirrors..."
+    local fallback=""
+    for cand in mirrors.edge.kernel.org de.archive.ubuntu.com nl.archive.ubuntu.com; do
+        if timeout 6 curl -4 -sf -o /dev/null \
+            "http://$cand/ubuntu/dists/jammy/Release"; then
+            fallback="$cand"; break
+        fi
+    done
+    if [ -z "$fallback" ]; then
+        echo "[entry] WARN: no fallback mirror reachable — apt will likely fail"
+        return 1
+    fi
+    echo "[entry] swapping apt mirrors -> $fallback"
+    [ -f /etc/apt/sources.list.entry-bak ] || cp /etc/apt/sources.list /etc/apt/sources.list.entry-bak
+    find /etc/apt/sources.list /etc/apt/sources.list.d -type f \( -name '*.list' -o -name 'sources.list' \) 2>/dev/null \
+      | while read f; do
+            sed -i \
+                -e "s|http://archive\.ubuntu\.com|http://$fallback|g" \
+                -e "s|http://security\.ubuntu\.com|http://$fallback|g" \
+                -e "s|http://us\.archive\.ubuntu\.com|http://$fallback|g" \
+                "$f"
+        done
+    cat > /etc/apt/apt.conf.d/99entry-failover <<'EOF'
+Acquire::ForceIPv4 "true";
+Acquire::Retries "5";
+Acquire::http::Timeout "20";
+Acquire::https::Timeout "20";
+EOF
+}
+ensure_apt_mirror_reachable
+
 echo "Installing common dependencies"
 # apt-get update is required — the base container's apt cache points at old
 # package versions that security.ubuntu.com has already rotated out, so
@@ -142,17 +188,17 @@ timeout 60 apt-get update -qq > /dev/null 2>&1 || \
 # libcairo2-dev + pkg-config are required by pycairo which is pulled in by
 # comfyui_controlnet_aux's requirements.txt. Without them pip fails and
 # main.sh's `set -e` kills the whole boot before ComfyUI instance 1 starts.
-apt-get install -qq -y curl jq git-lfs ninja-build \
+timeout 300 apt-get install -qq -y --fix-missing curl jq git-lfs ninja-build \
     aria2 zip python3-venv python3-dev python3.10 \
     python3.10-venv python3.10-dev python3.10-tk \
     libcairo2-dev pkg-config > /dev/null
-apt-get install -y htop > /dev/null
+timeout 60 apt-get install -y htop > /dev/null
 
 # Update Node.js to version 20.x
 echo "Updating Node.js to version 20.x"
-apt-get remove -y nodejs > /dev/null 2>&1 || true
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash - > /dev/null
-apt-get install -y nodejs > /dev/null
+timeout 30 apt-get remove -y nodejs > /dev/null 2>&1 || true
+timeout 180 bash -c 'curl -fsSL https://deb.nodesource.com/setup_20.x | bash -' > /dev/null
+timeout 180 apt-get install -y nodejs > /dev/null
 
 # Install PM2 globally
 echo "Installing PM2 for process management"
