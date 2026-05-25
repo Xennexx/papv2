@@ -76,8 +76,12 @@ if [[ "$REINSTALL_SD_COMFY" || ! -f "$VENV_DIR/sd_comfy-env/.prepared" ]]; then
     pip install --upgrade wheel setuptools
     
     cd $REPO_DIR
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
-    pip install xformers --index-url https://download.pytorch.org/whl/cu126
+    # Pinned to the versions running on the working boxes (acc1-4). Unpinned was
+    # resolving to torch 2.12.0, which has no matching torchaudio on the cu126
+    # index -> version-mismatch fix-up fails -> main.sh dies before touch .prepared
+    # -> instances 2/3/4 time out. Keep these in lockstep.
+    pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
+    pip install xformers==0.0.35 --index-url https://download.pytorch.org/whl/cu126
 
     # Install requirements.txt — use cu126 as primary index so pip doesn't pull cu130 from PyPI
     pip install -r requirements.txt --index-url https://download.pytorch.org/whl/cu126 --extra-index-url https://pypi.org/simple
