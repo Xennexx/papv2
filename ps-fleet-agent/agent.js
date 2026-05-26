@@ -44,6 +44,9 @@ let httpServer = null;
 // Active downloads
 const activeDownloads = new Map(); // fileId -> {abort controller state}
 
+// Cached GPU name for the torch fallback when nvidia-smi/NVML is broken (see heartbeat).
+let cachedGpuName = null;
+
 // ─── Inventory Scanner ───
 
 async function scanDirectory(rootDir) {
@@ -217,6 +220,24 @@ function getSystemStats() {
     }
   } catch (_) {}
 
+  // Fallback: nvidia-smi/NVML breaks in long-running Paperspace containers
+  // ("Failed to initialize NVML: Unknown Error") while CUDA compute still works. When that
+  // happens, report at least the GPU name via torch so the dashboard isn't blank. Cached so
+  // we don't import torch on every heartbeat. Live util/temp need NVML and stay unavailable.
+  if (!gpuInfo) {
+    if (cachedGpuName === null) {
+      try {
+        cachedGpuName = execSync(
+          `/storage/sd_comfy-env/bin/python -c "import torch;print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else '')"`,
+          { timeout: 15000, encoding: 'utf-8' }
+        ).trim() || '';
+      } catch (_) { cachedGpuName = ''; }
+    }
+    if (cachedGpuName) {
+      gpuInfo = { name: cachedGpuName, memUsedMB: null, memTotalMB: null, utilization: null, tempC: null, statsUnavailable: true };
+    }
+  }
+
   let pm2Services = [];
   try {
     const raw = execSync('PM2_HOME=/notebooks/.pm2_config pm2 jlist 2>/dev/null', {
@@ -241,10 +262,14 @@ function getSystemStats() {
   ];
   for (const inst of instanceMap) {
     try {
-      const listening = execSync(`ss -tlnp 2>/dev/null | grep ':${inst.port} '`, {
-        timeout: 3000, encoding: 'utf-8'
-      }).trim();
-      if (listening) {
+      // `ss` is unreliable in the gradient-base container (often returns nothing even when
+      // ComfyUI is bound), so probe the instance over HTTP instead — this also confirms the
+      // server is actually serving, not merely listening.
+      const code = execSync(
+        `curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:${inst.port}/system_stats`,
+        { timeout: 5000, encoding: 'utf-8' }
+      ).trim();
+      if (code === '200') {
         const url = PAPERSPACE_FQDN ? `https://${PAPERSPACE_FQDN}${inst.path}` : null;
         comfyInstances.push({ name: inst.name, port: inst.port, path: inst.path, url, status: 'running' });
       }
