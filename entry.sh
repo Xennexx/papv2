@@ -20,6 +20,20 @@ if [ -d /notebooks/.git ]; then
         echo "[entry] git pull timed out or failed; continuing with on-disk code"
 fi
 
+# Ensure jupyter-server-proxy is present in the SYSTEM python that runs jupyter.
+# Older cached gradient-base images preinstalled it; newer image pulls (e.g. fresh
+# accounts) omit it, so jupyter's /sd-comfy /com2 /com3 /com4 proxy routes never
+# register (-> 404) even though ComfyUI serves fine on localhost. jupyter is launched
+# in parallel with this script by the notebook command, so if jsp was missing we must
+# install it AND restart jupyter (from /notebooks, with the config) for the extension +
+# routes to load. No-op on boxes that already have it (no jupyter restart, no disruption).
+if command -v /usr/local/bin/python3 >/dev/null 2>&1 && ! /usr/local/bin/python3 -c "import jupyter_server_proxy" 2>/dev/null; then
+    echo "[entry] jupyter-server-proxy missing in system python — installing 4.5.0 + restarting jupyter"
+    /usr/local/bin/python3 -m pip install jupyter-server-proxy==4.5.0 >/tmp/jsp_install.log 2>&1
+    pkill -f jupyter-lab 2>/dev/null; sleep 2
+    ( cd /notebooks && setsid bash -c "jupyter lab --config=/notebooks/jupyter_server_config.py --allow-root --ip=0.0.0.0 --port=8888 --no-browser --ServerApp.trust_xheaders=True --ServerApp.disable_check_xsrf=False --ServerApp.allow_remote_access=True --ServerApp.allow_origin='*' --ServerApp.allow_credentials=True" >/tmp/jup_jsp_restart.log 2>&1 </dev/null & )
+fi
+
 # Deathwatch: log resource state every 10s to /storage so we can post-mortem
 # any pod kill. Safe to run everywhere because /storage is persistent.
 if command -v python3 >/dev/null 2>&1; then
