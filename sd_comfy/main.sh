@@ -29,10 +29,41 @@ ensure_custom_node_repo() {
   fi
 }
 
+# Single source of truth: "<repo_url>|<dir_name>|<requirements_file_or_empty>".
+# ComfyUI_ADV_CLIP_emb provides BNK_CLIPTextEncodeAdvanced (the positive/negative
+# prompt encoders in the main gen path). It was historically missing from this
+# list — fresh boxes (acc5) came up without it and 400'd every standard gen
+# while still looking "up" (incident 2026-05-27). Add new required nodes here.
+REQUIRED_CUSTOM_NODES=(
+  "https://github.com/chengzeyi/Comfy-WaveSpeed.git|Comfy-WaveSpeed|"
+  "https://github.com/Fannovel16/comfyui_controlnet_aux.git|comfyui_controlnet_aux|requirements.txt"
+  "https://github.com/rgthree/rgthree-comfy.git|rgthree-comfy|"
+  "https://github.com/BlenderNeko/ComfyUI_ADV_CLIP_emb.git|ComfyUI_ADV_CLIP_emb|"
+)
+
 ensure_required_custom_nodes() {
-  ensure_custom_node_repo "https://github.com/chengzeyi/Comfy-WaveSpeed.git" "Comfy-WaveSpeed"
-  ensure_custom_node_repo "https://github.com/Fannovel16/comfyui_controlnet_aux.git" "comfyui_controlnet_aux" "requirements.txt"
-  ensure_custom_node_repo "https://github.com/rgthree/rgthree-comfy.git" "rgthree-comfy"
+  local spec url dir req
+  for spec in "${REQUIRED_CUSTOM_NODES[@]}"; do
+    IFS='|' read -r url dir req <<< "$spec"
+    ensure_custom_node_repo "$url" "$dir" "$req"
+  done
+}
+
+# Fail loud: refuse to start a misprovisioned box. A node dir that is absent or
+# never loaded (no __init__.py) means ComfyUI silently won't register its nodes,
+# which surfaces only as per-gen 400s once the box is already taking traffic.
+verify_required_custom_nodes() {
+  local spec url dir req missing=()
+  for spec in "${REQUIRED_CUSTOM_NODES[@]}"; do
+    IFS='|' read -r url dir req <<< "$spec"
+    if [[ ! -f "$REPO_DIR/custom_nodes/$dir/__init__.py" ]]; then
+      missing+=("$dir")
+    fi
+  done
+  if (( ${#missing[@]} > 0 )); then
+    error_exit "### ERROR ### Required ComfyUI custom node(s) missing/unloadable after install: ${missing[*]} (under $REPO_DIR/custom_nodes). Refusing to start — a box without these 400s every standard generation. Fix the clone (network/git) and re-run."
+  fi
+  echo "Verified ${#REQUIRED_CUSTOM_NODES[@]} required custom nodes present."
 }
 
 
@@ -135,6 +166,7 @@ fi
 log "Finished Preparing Environment for Stable Diffusion Comfy"
 
 ensure_required_custom_nodes
+verify_required_custom_nodes
 
 if [[ -z "$INSTALL_ONLY" ]]; then
   echo "### Starting Stable Diffusion Comfy ###"
