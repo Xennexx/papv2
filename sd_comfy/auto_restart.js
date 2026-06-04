@@ -19,7 +19,7 @@ const DEDICATED_WARMUP_MAX_GRACE_MS = 45 * 60 * 1000;
 // notebook env): monitor ONLY com3, no SDXL lanes, no dedicated warmup. Marker (not env)
 // so a `pm2 restart` of this watchdog keeps the right config. Default (no marker) = full
 // 4-instance SDXL box, byte-identical to before.
-const QWEN_DEDICATED_BOX = fs.existsSync('/notebooks/sd_comfy/.qwen_dedicated_box');
+const QWEN_DEDICATED_BOX = fs.existsSync('/storage/.qwen_dedicated_box');
 
 const DEDICATED_WARMUP_TARGETS = QWEN_DEDICATED_BOX ? {} : {
     '1': 'wai',

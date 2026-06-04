@@ -33,7 +33,7 @@ source $VENV_DIR/sd_comfy-env/bin/activate
 log "Finished Preparing Environment for Stable Diffusion Comfy"
 
 
-if [[ -z "$INSTALL_ONLY" ]]; then
+if [[ -z "$INSTALL_ONLY" ]] && [ ! -f /storage/.qwen_dedicated_box ]; then
   echo "### Starting Stable Diffusion Comfy ###"
   log "Starting Stable Diffusion Comfy"
   cd "$REPO_DIR"

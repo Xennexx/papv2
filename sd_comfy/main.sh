@@ -168,7 +168,7 @@ log "Finished Preparing Environment for Stable Diffusion Comfy"
 ensure_required_custom_nodes
 verify_required_custom_nodes
 
-if [[ -z "$INSTALL_ONLY" ]]; then
+if [[ -z "$INSTALL_ONLY" ]] && [ ! -f /storage/.qwen_dedicated_box ]; then
   echo "### Starting Stable Diffusion Comfy ###"
   log "Starting Stable Diffusion Comfy"
 

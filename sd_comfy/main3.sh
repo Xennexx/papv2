@@ -39,7 +39,7 @@ if [[ -z "$INSTALL_ONLY" ]]; then
   cd "$REPO_DIR"
   # [qwen-box] dedicated Qwen box -> fp8 unet (QwenImage ~38GB bf16 OOMs a 48GB A6000;
   # fp8 keeps it ~28GB resident). Default -> original --highvram for SDXL boxes.
-  if [ -f /notebooks/sd_comfy/.qwen_dedicated_box ]; then
+  if [ -f /storage/.qwen_dedicated_box ]; then
     COM3_LAUNCH="python main.py --dont-print-server --fp8_e4m3fn-unet --port 7101 --fast --preview-method none"
   else
     COM3_LAUNCH="python main.py --dont-print-server --highvram --fast --preview-method none --port 7101"
