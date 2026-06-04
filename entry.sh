@@ -235,10 +235,24 @@ fi
 # (git pull already ran at the top of entry.sh as part of the readiness
 # fast-path, so the on-disk code is up-to-date before main.sh runs.)
 
-bash /notebooks/sd_comfy/main.sh
-bash /notebooks/sd_comfy/main2.sh
-bash /notebooks/sd_comfy/main3.sh
-bash /notebooks/sd_comfy/main4.sh
+# [qwen-box] Dedicated Qwen/Anima box (acc5): set notebook env QWEN_DEDICATED_BOX=true
+# to run ONLY the Qwen instance (com3) — no SDXL lanes, fp8 unet, no SDXL warmup. A
+# marker file (not an env var) carries the flag to the manage/watchdog/launcher scripts
+# so it survives pm2 env propagation. Default (unset) = full 4-instance SDXL box,
+# byte-identical to the previous behavior. See HANDOFF-qwen5.
+QWEN_BOX_MARKER=/notebooks/sd_comfy/.qwen_dedicated_box
+if [ "${QWEN_DEDICATED_BOX}" = "true" ]; then
+  touch "$QWEN_BOX_MARKER"
+  echo "[qwen-box] QWEN_DEDICATED_BOX=true -> single-instance Qwen (com3 only, fp8, no SDXL/warmup)"
+  INSTALL_ONLY=1 bash /notebooks/sd_comfy/main.sh
+  bash /notebooks/sd_comfy/main3.sh
+else
+  rm -f "$QWEN_BOX_MARKER"
+  bash /notebooks/sd_comfy/main.sh
+  bash /notebooks/sd_comfy/main2.sh
+  bash /notebooks/sd_comfy/main3.sh
+  bash /notebooks/sd_comfy/main4.sh
+fi
 
 # Start background services with PM2 using robust startup script
 echo "Starting ComfyUI background services with PM2..."

@@ -87,7 +87,12 @@ start_instance() {
     # Optimization flags: --fast enables fp16 accumulation, cublas ops, autotune, pinned memory
     # Set COMFYUI_EXTRA_FLAGS to override (e.g. COMFYUI_EXTRA_FLAGS="" to disable all extras)
     local extra_flags="${COMFYUI_EXTRA_FLAGS:-"--fast --preview-method none"}"
-    PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --port $port $extra_flags" > "$LOG_DIR/${name}.log" 2>&1 &
+    # [qwen-box] dedicated Qwen box -> fp8 unet (fits 48GB); default -> --highvram for SDXL boxes
+    local vram_flag="--highvram"
+    if [ -f /notebooks/sd_comfy/.qwen_dedicated_box ]; then
+        vram_flag="--fp8_e4m3fn-unet"
+    fi
+    PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server $vram_flag --port $port $extra_flags" > "$LOG_DIR/${name}.log" 2>&1 &
     echo $! > "$pidfile"
     
     echo "Started ComfyUI instance $instance (PID: $!, port $port)"

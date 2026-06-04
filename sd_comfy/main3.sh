@@ -37,7 +37,14 @@ if [[ -z "$INSTALL_ONLY" ]]; then
   echo "### Starting Stable Diffusion Comfy ###"
   log "Starting Stable Diffusion Comfy"
   cd "$REPO_DIR"
-  PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --fast --preview-method none --port 7101" > $LOG_DIR/sd_comfy3.log 2>&1 &
+  # [qwen-box] dedicated Qwen box -> fp8 unet (QwenImage ~38GB bf16 OOMs a 48GB A6000;
+  # fp8 keeps it ~28GB resident). Default -> original --highvram for SDXL boxes.
+  if [ -f /notebooks/sd_comfy/.qwen_dedicated_box ]; then
+    COM3_LAUNCH="python main.py --dont-print-server --fp8_e4m3fn-unet --port 7101 --fast --preview-method none"
+  else
+    COM3_LAUNCH="python main.py --dont-print-server --highvram --fast --preview-method none --port 7101"
+  fi
+  PYTHONUNBUFFERED=1 service_loop "$COM3_LAUNCH" > $LOG_DIR/sd_comfy3.log 2>&1 &
   echo $! > /tmp/sd_comfy3.pid
 fi
 

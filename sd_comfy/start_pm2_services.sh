@@ -244,7 +244,10 @@ pm2 set pm2-logrotate:compress true > /dev/null 2>&1
 
 echo ""
 echo "4. Dedicated lane warmup:"
-if [ -f /notebooks/sd_comfy/warmup_common.py ]; then
+if [ -f /notebooks/sd_comfy/.qwen_dedicated_box ]; then
+    # [qwen-box] no SDXL warmup on the dedicated Qwen box (single-instance com3)
+    echo "  - Warmup disabled on Qwen box (single-instance com3)"
+elif [ -f /notebooks/sd_comfy/warmup_common.py ]; then
     if pgrep -f "python3 /notebooks/sd_comfy/warmup_common.py" > /dev/null 2>&1; then
         echo "  ✓ Warmup already running"
     else

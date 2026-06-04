@@ -15,13 +15,28 @@ const INSTANCE_ACTIVITY_GRACE_MS = 90 * 1000;
 const WARMUP_STATUS_FILE = '/tmp/comfy_warmup_status.json';
 const WARMUP_STATUS_STALE_MS = 10 * 60 * 1000;
 const DEDICATED_WARMUP_MAX_GRACE_MS = 45 * 60 * 1000;
-const DEDICATED_WARMUP_TARGETS = {
+// [qwen-box] dedicated Qwen box (marker written by entry.sh from the QWEN_DEDICATED_BOX
+// notebook env): monitor ONLY com3, no SDXL lanes, no dedicated warmup. Marker (not env)
+// so a `pm2 restart` of this watchdog keeps the right config. Default (no marker) = full
+// 4-instance SDXL box, byte-identical to before.
+const QWEN_DEDICATED_BOX = fs.existsSync('/notebooks/sd_comfy/.qwen_dedicated_box');
+
+const DEDICATED_WARMUP_TARGETS = QWEN_DEDICATED_BOX ? {} : {
     '1': 'wai',
     '2': 'pornmaster'
 };
 
 // Instance configuration (matches manage.sh)
-const INSTANCES = {
+const INSTANCES = QWEN_DEDICATED_BOX ? {
+    3: {
+        port: 7101,
+        path: '/com3/',
+        logFile: 'sd_comfy3.log',
+        queueThreshold: 10,
+        warmupGracePeriod: 15 * 60 * 1000,
+        stagnantQueueRestartAfter: 10 * 60 * 1000
+    }
+} : {
     1: {
         port: 7005,
         path: '/sd-comfy/',
