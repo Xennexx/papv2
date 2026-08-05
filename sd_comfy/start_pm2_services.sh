@@ -154,7 +154,7 @@ cd /notebooks/sd_comfy
 chmod +x auto_restart.js image_cleanup.js
 
 # Check if ComfyUI instances are running - if so, be gentle with PM2 cleanup
-COMFYUI_RUNNING=$(ps aux | grep "python main.py" | grep -v grep | wc -l)
+COMFYUI_RUNNING=$(ps auxww | grep "python main.py" | grep -v grep | wc -l)
 if [ "$COMFYUI_RUNNING" -gt 0 ]; then
     echo "Found $COMFYUI_RUNNING running ComfyUI instances - performing gentle PM2 cleanup..."
     # Only stop our specific services, don't kill the entire PM2 daemon

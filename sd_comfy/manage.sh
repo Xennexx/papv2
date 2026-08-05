@@ -112,7 +112,7 @@ stop_instance() {
     # Kill strategy: Find the entire process tree for this instance and kill from top to bottom
     
     # Find python processes for this port
-    local python_pids=$(ps aux | grep "python main.py.*--port $port" | grep -v grep | awk '{print $2}')
+    local python_pids=$(ps auxww | grep "python main.py.*--port $port" | grep -v grep | awk '{print $2}')
     
     # Build a list of all PIDs in the process tree for this instance
     local all_pids=""
@@ -176,7 +176,7 @@ stop_instance() {
     
     # Final check
     sleep 1
-    local final_check=$(ps aux | grep "python main.py.*--port $port" | grep -v grep | awk '{print $2}')
+    local final_check=$(ps auxww | grep "python main.py.*--port $port" | grep -v grep | awk '{print $2}')
     if [[ -z "$final_check" ]]; then
         echo "Stopped ComfyUI instance $instance"
     else
@@ -204,7 +204,7 @@ status_instance() {
     fi
     
     # If no valid PID file, check for running processes by port
-    local pids=$(ps aux | grep "python main.py.*--port $port" | grep -v grep | awk '{print $2}')
+    local pids=$(ps auxww | grep "python main.py.*--port $port" | grep -v grep | awk '{print $2}')
     
     if [[ -n "$pids" ]]; then
         echo "Instance $instance: RUNNING (port $port) - PIDs: $pids"
