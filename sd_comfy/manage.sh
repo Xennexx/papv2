@@ -92,6 +92,15 @@ start_instance() {
     if [ -f /storage/.qwen_dedicated_box ]; then
         vram_flag="--fp8_e4m3fn-unet"
     fi
+    # [cold-lane-vram] com3/com4 serve ~4.5% of traffic but hold ~10GB of the shared
+    # 48GB card under --highvram, starving the hot lanes (95.5% of traffic) which OOM
+    # asking for as little as 12MB. --normalvram makes the cold lanes ELASTIC: resident
+    # while VRAM is spare, yielding under pressure. Measured on one box 2026-08-11:
+    # 0/2020 OOM vs 1.76% on unchanged boxes, and com4 got FASTER (14.1s vs 19.7s).
+    # Marker file is the per-box opt-in; /storage survives free-tier recycles.
+    if [ -f /storage/.cold_lane_normalvram ] && { [ "$instance" = "3" ] || [ "$instance" = "4" ]; }; then
+        vram_flag="--normalvram"
+    fi
     PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server $vram_flag --port $port $extra_flags" > "$LOG_DIR/${name}.log" 2>&1 &
     echo $! > "$pidfile"
     
