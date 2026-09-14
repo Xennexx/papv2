@@ -180,7 +180,7 @@ if [[ -z "$INSTALL_ONLY" ]] && [ ! -f /storage/.qwen_dedicated_box ]; then
     awk '!seen[$0]++' "$TINYTERRA_CONFIG" > "${TINYTERRA_CONFIG}.tmp" && mv "${TINYTERRA_CONFIG}.tmp" "$TINYTERRA_CONFIG"
   fi
 
-  PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --fast --preview-method none --port 7005" > $LOG_DIR/sd_comfy.log 2>&1 &
+  PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --fast fp16_accumulation --preview-method none --port 7005" > $LOG_DIR/sd_comfy.log 2>&1 &
   echo $! > /tmp/sd_comfy.pid
 fi
 

@@ -84,7 +84,10 @@ start_instance() {
 
     cd "$REPO_DIR"
     
-    # Optimization flags: --fast enables fp16 accumulation, cublas ops, autotune, pinned memory
+    # Optimization flags: EXPLICIT --fast list only. Bare --fast = "every PerformanceFeature", which on
+    # ComfyUI >= 0.3.57 silently includes cudnn autotune; with cudaMallocAsync (default < 0.3.66) the
+    # benchmark grabs ALL free VRAM on the shared A6000 and the other 3 lanes OOM (acc5, 2026-09-13).
+    # cublas_ops is not installed on any box; fp8_matrix_mult only touches fp8 weights.
     # Set COMFYUI_EXTRA_FLAGS to override (e.g. COMFYUI_EXTRA_FLAGS="" to disable all extras)
     local extra_flags="${COMFYUI_EXTRA_FLAGS:-"--fast --preview-method none"}"
     # [qwen-box] dedicated Qwen box -> fp8 unet (fits 48GB); default -> --highvram for SDXL boxes

@@ -37,7 +37,7 @@ if [[ -z "$INSTALL_ONLY" ]] && [ ! -f /storage/.qwen_dedicated_box ]; then
   echo "### Starting Stable Diffusion Comfy ###"
   log "Starting Stable Diffusion Comfy"
   cd "$REPO_DIR"
-  PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --fast --preview-method none --port 7100" > $LOG_DIR/sd_comfy2.log 2>&1 &
+  PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server --highvram --fast fp16_accumulation --preview-method none --port 7100" > $LOG_DIR/sd_comfy2.log 2>&1 &
   echo $! > /tmp/sd_comfy2.pid
 fi
 

@@ -43,7 +43,7 @@ if [[ -z "$INSTALL_ONLY" ]] && [ ! -f /storage/.qwen_dedicated_box ]; then
   if [ -f /storage/.cold_lane_normalvram ]; then
     COM4_VRAM="--normalvram"
   fi
-  PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server $COM4_VRAM --fast --preview-method none --port 7102" > $LOG_DIR/sd_comfy4.log 2>&1 &
+  PYTHONUNBUFFERED=1 service_loop "python main.py --dont-print-server $COM4_VRAM --fast fp16_accumulation --preview-method none --port 7102" > $LOG_DIR/sd_comfy4.log 2>&1 &
   echo $! > /tmp/sd_comfy4.pid
 fi
 

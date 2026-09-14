@@ -40,9 +40,9 @@ if [[ -z "$INSTALL_ONLY" ]]; then
   # [qwen-box] dedicated Qwen box -> fp8 unet (QwenImage ~38GB bf16 OOMs a 48GB A6000;
   # fp8 keeps it ~28GB resident). Default -> original --highvram for SDXL boxes.
   if [ -f /storage/.qwen_dedicated_box ]; then
-    COM3_LAUNCH="python main.py --dont-print-server --fp8_e4m3fn-unet --port 7101 --fast --preview-method none"
+    COM3_LAUNCH="python main.py --dont-print-server --fp8_e4m3fn-unet --port 7101 --fast fp16_accumulation --preview-method none"
   else
-    COM3_LAUNCH="python main.py --dont-print-server --highvram --fast --preview-method none --port 7101"
+    COM3_LAUNCH="python main.py --dont-print-server --highvram --fast fp16_accumulation --preview-method none --port 7101"
   fi
   PYTHONUNBUFFERED=1 service_loop "$COM3_LAUNCH" > $LOG_DIR/sd_comfy3.log 2>&1 &
   echo $! > /tmp/sd_comfy3.pid
