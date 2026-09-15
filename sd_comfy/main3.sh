@@ -42,7 +42,14 @@ if [[ -z "$INSTALL_ONLY" ]]; then
   if [ -f /storage/.qwen_dedicated_box ]; then
     COM3_LAUNCH="python main.py --dont-print-server --fp8_e4m3fn-unet --port 7101 --fast fp16_accumulation --preview-method none"
   else
-    COM3_LAUNCH="python main.py --dont-print-server --highvram --fast fp16_accumulation --preview-method none --port 7101"
+    # [cold-lane-vram] com3 serves only low-volume SD1.5/Hyperfusion traffic; honour the same
+    # /storage marker as main4.sh/manage.sh so a recycle does not bring it back as --highvram
+    # (pinned weights on the shared A6000 starve the hot lanes).
+    COM3_VRAM="--highvram"
+    if [ -f /storage/.cold_lane_normalvram ]; then
+      COM3_VRAM="--normalvram"
+    fi
+    COM3_LAUNCH="python main.py --dont-print-server $COM3_VRAM --fast fp16_accumulation --preview-method none --port 7101"
   fi
   PYTHONUNBUFFERED=1 service_loop "$COM3_LAUNCH" > $LOG_DIR/sd_comfy3.log 2>&1 &
   echo $! > /tmp/sd_comfy3.pid
