@@ -89,7 +89,7 @@ start_instance() {
     # benchmark grabs ALL free VRAM on the shared A6000 and the other 3 lanes OOM (acc5, 2026-09-13).
     # cublas_ops is not installed on any box; fp8_matrix_mult only touches fp8 weights.
     # Set COMFYUI_EXTRA_FLAGS to override (e.g. COMFYUI_EXTRA_FLAGS="" to disable all extras)
-    local extra_flags="${COMFYUI_EXTRA_FLAGS:-"--fast --preview-method none"}"
+    local extra_flags="${COMFYUI_EXTRA_FLAGS:-"--fast fp16_accumulation --preview-method none"}"
     # [qwen-box] dedicated Qwen box -> fp8 unet (fits 48GB); default -> --highvram for SDXL boxes
     local vram_flag="--highvram"
     if [ -f /storage/.qwen_dedicated_box ]; then

@@ -235,6 +235,18 @@ fi
 # (git pull already ran at the top of entry.sh as part of the readiness
 # fast-path, so the on-disk code is up-to-date before main.sh runs.)
 
+# torch.compile cache on /storage (see sd_comfy/.env): cap its size at boot, before any
+# ComfyUI process can be reading it. Over the cap -> drop it and recompile once.
+TORCH_COMPILE_CACHE_ROOT=/storage/.torch_compile_cache
+TORCH_COMPILE_CACHE_MAX_MB=${TORCH_COMPILE_CACHE_MAX_MB:-10000}
+if [ -d "$TORCH_COMPILE_CACHE_ROOT" ]; then
+  cache_mb=$(timeout 60 du -sm "$TORCH_COMPILE_CACHE_ROOT" 2>/dev/null | cut -f1)
+  if [ -n "$cache_mb" ] && [ "$cache_mb" -gt "$TORCH_COMPILE_CACHE_MAX_MB" ]; then
+    echo "[entry] torch compile cache ${cache_mb}MB > ${TORCH_COMPILE_CACHE_MAX_MB}MB; clearing"
+    rm -rf "$TORCH_COMPILE_CACHE_ROOT"
+  fi
+fi
+
 # [qwen-box] Dedicated Qwen/Anima box (acc5): run ONLY the Qwen instance (com3) — no SDXL
 # lanes, fp8 unet, no SDXL warmup. Activated by EITHER the notebook env QWEN_DEDICATED_BOX=true
 # OR a persistent marker at /storage/.qwen_dedicated_box (per-account CephFS, survives full
