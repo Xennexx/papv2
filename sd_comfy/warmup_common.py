@@ -13,7 +13,7 @@ WARMUP_TARGETS = [
         "name": "wai",
         "instance_id": 1,
         "port": 7005,
-        "checkpoint": "waiIllustriousSDXL_v160.safetensors",
+        "checkpoint": "waiIllustriousSDXL_v170.safetensors",
         "lora": "dmd2_sdxl_4step_lora_fp16.safetensors",
         "cfg": 1.0,
         "sampler": "lcm",
@@ -124,9 +124,33 @@ def build_initial_status(targets=None):
     return status
 
 
+# [wai-ckpt] The coordinator sends WAI V17 (Redis image:wai:ckpt=v16 rolls it back to v16). To roll the boot warm-up
+# back too, write the checkpoint file name into /storage/.wai_warmup_ckpt on each account (e.g.
+# waiIllustriousSDXL_v160.safetensors); delete the file to warm V17 again.
+def _wai_warmup_override():
+    try:
+        with open("/storage/.wai_warmup_ckpt") as f:
+            name = f.read().strip()
+        return name if name.endswith(".safetensors") and "/" not in name else None
+    except Exception:
+        return None
+
+
+_WAI_OVERRIDE = _wai_warmup_override()
+if _WAI_OVERRIDE:
+    for _target in WARMUP_TARGETS:
+        if _target["name"] == "wai":
+            _target["checkpoint"] = _WAI_OVERRIDE
+
+# [krea-lane] the Krea box (/storage/.krea_lane) runs no com3/com4 (instances 3/4): never warm or recover them there.
+KREA_LANE_BOX = os.path.exists("/storage/.krea_lane") and not os.path.exists("/storage/.qwen_dedicated_box")
+
+
 def get_selected_targets():
     selected_names = os.getenv("COMFY_WARMUP_TARGETS", "").strip()
     if not selected_names:
+        if KREA_LANE_BOX:
+            return [target for target in WARMUP_TARGETS if target["instance_id"] not in (3, 4)]
         return WARMUP_TARGETS
 
     requested = {
@@ -134,7 +158,8 @@ def get_selected_targets():
         for name in selected_names.split(",")
         if name.strip()
     }
-    targets = [target for target in WARMUP_TARGETS if target["name"] in requested]
+    targets = [target for target in WARMUP_TARGETS if target["name"] in requested
+               and not (KREA_LANE_BOX and target["instance_id"] in (3, 4))]
     missing = sorted(requested - {target["name"] for target in targets})
     if missing:
         log(f"Ignoring unknown warmup target(s): {', '.join(missing)}")

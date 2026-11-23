@@ -33,7 +33,8 @@ source $VENV_DIR/sd_comfy-env/bin/activate
 log "Finished Preparing Environment for Stable Diffusion Comfy"
 
 
-if [[ -z "$INSTALL_ONLY" ]]; then
+# [krea-lane] the Krea box (/storage/.krea_lane) gives com3's VRAM to the Krea lane (main_krea.sh).
+if [[ -z "$INSTALL_ONLY" ]] && { [ ! -f /storage/.krea_lane ] || [ -f /storage/.qwen_dedicated_box ]; }; then
   echo "### Starting Stable Diffusion Comfy ###"
   log "Starting Stable Diffusion Comfy"
   cd "$REPO_DIR"

@@ -73,6 +73,14 @@ const INSTANCES = QWEN_DEDICATED_BOX ? {
     }
 };
 
+// [krea-lane] the Krea box (/storage/.krea_lane, never the Qwen box) runs no com3/com4: don't watch or restart them.
+// The Krea lane itself (main_krea.sh, port 7103) restarts through its own service_loop.
+const KREA_LANE_BOX = !QWEN_DEDICATED_BOX && fs.existsSync('/storage/.krea_lane');
+if (KREA_LANE_BOX) {
+    delete INSTANCES[3];
+    delete INSTANCES[4];
+}
+
 // Track when each instance was last started (for warmup grace period)
 const instanceStartTimes = {};
 const instanceState = {};

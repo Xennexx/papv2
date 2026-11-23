@@ -266,6 +266,10 @@ else
   bash /notebooks/sd_comfy/main2.sh
   bash /notebooks/sd_comfy/main3.sh
   bash /notebooks/sd_comfy/main4.sh
+  # [krea-lane] PornMaster Krea2 lane, only on an account with /storage/.krea_lane (main3/main4 skip com3/com4 there).
+  if [ -f /storage/.krea_lane ]; then
+    bash /notebooks/sd_comfy/main_krea.sh
+  fi
 fi
 
 # Start background services with PM2 using robust startup script

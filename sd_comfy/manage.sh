@@ -70,6 +70,11 @@ start_instance() {
     local instance=$1
     local info
     info=$(get_instance_info "$instance") || return 1
+    # [krea-lane] the Krea box (/storage/.krea_lane) runs no com3/com4: their VRAM belongs to the Krea lane.
+    if [ -f /storage/.krea_lane ] && [ ! -f /storage/.qwen_dedicated_box ] && { [ "$instance" = "3" ] || [ "$instance" = "4" ]; }; then
+        echo "Instance $instance is disabled on the Krea box (/storage/.krea_lane); not starting"
+        return 0
+    fi
     
     IFS=':' read -r port path name <<< "$info"
     local pidfile="/tmp/${name}.pid"
